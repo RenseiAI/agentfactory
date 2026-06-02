@@ -165,7 +165,7 @@ jobs:
 
       # ─── Upload as workflow artifact (always available) ───────────────────
       - name: Upload signed artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.target.outputs.plugin }}-v${{ steps.target.outputs.version }}-signed
           path: |
