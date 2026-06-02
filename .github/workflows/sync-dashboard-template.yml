@@ -67,7 +67,7 @@ jobs:
       # Create a PR with the changes if anything changed
       - name: Create Pull Request
         if: steps.changes.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore(template): sync dashboard template to v${{ steps.version.outputs.value }}"
