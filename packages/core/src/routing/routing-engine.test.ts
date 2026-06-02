@@ -386,3 +386,142 @@ describe('selectProvider', () => {
     expect(store.getPosterior).toHaveBeenCalledWith('amp', 'development')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Cross-provider routing INCLUDING gemini (gemini-first-class wave C1)
+//
+// The arms above use claude/codex/amp. These tests exercise a 4th arm —
+// 'gemini' — end-to-end through selectProvider() and updatePosterior(),
+// confirming the routing engine treats gemini as a first-class provider after
+// A1 added it to the AgentProviderName Zod schema.
+// ---------------------------------------------------------------------------
+
+/**
+ * In-memory PosteriorStore that actually mutates on updatePosterior(), so the
+ * gemini arm can be observed learning across a routing loop (the mock above
+ * only stubs updatePosterior). Reward updates the Beta(alpha, beta) posterior:
+ * success bumps alpha, failure bumps beta — the standard Bernoulli-Beta update.
+ */
+function makeInMemoryStore(): PosteriorStore {
+  const map = new Map<string, RoutingPosterior>()
+  const key = (p: AgentProviderName, w: AgentWorkType) => `${p}:${w}`
+  return {
+    async getPosterior(provider, workType) {
+      return map.get(key(provider, workType)) ?? makePosterior({ provider, workType })
+    },
+    async updatePosterior(provider, workType, reward) {
+      const prev = map.get(key(provider, workType)) ?? makePosterior({ provider, workType })
+      const next: RoutingPosterior = {
+        ...prev,
+        alpha: prev.alpha + reward,
+        beta: prev.beta + (1 - reward),
+        totalObservations: prev.totalObservations + 1,
+        avgReward:
+          (prev.avgReward * prev.totalObservations + reward) / (prev.totalObservations + 1),
+        lastUpdated: Date.now(),
+      }
+      map.set(key(provider, workType), next)
+      return next
+    },
+    async getAllPosteriors() {
+      return [...map.values()]
+    },
+    async resetPosterior(provider, workType) {
+      map.delete(key(provider, workType))
+    },
+  }
+}
+
+describe('selectProvider — cross-provider routing including gemini', () => {
+  const workType: AgentWorkType = 'development'
+  const fourArm: AgentProviderName[] = ['claude', 'codex', 'amp', 'gemini']
+
+  it('accepts gemini as a candidate and can select it', async () => {
+    const store = makeMockStore({})
+    const rng = seededRng(7)
+
+    const decision = await selectProvider(store, workType, fourArm, DEFAULT_ROUTING_CONFIG, { rng })
+
+    expect(fourArm).toContain(decision.selectedProvider)
+    expect(store.getPosterior).toHaveBeenCalledWith('gemini', 'development')
+  })
+
+  it('calls getPosterior for the gemini arm', async () => {
+    const store = makeMockStore({})
+    const rng = seededRng(42)
+
+    await selectProvider(store, workType, fourArm, DEFAULT_ROUTING_CONFIG, { rng })
+
+    expect(store.getPosterior).toHaveBeenCalledTimes(4)
+    expect(store.getPosterior).toHaveBeenCalledWith('gemini', 'development')
+  })
+
+  it('picks gemini when its posterior dominates the other three arms', async () => {
+    const store = makeMockStore({
+      'claude:development': makePosterior({ provider: 'claude', alpha: 2, beta: 50, totalObservations: 52 }),
+      'codex:development': makePosterior({ provider: 'codex', alpha: 2, beta: 50, totalObservations: 52 }),
+      'amp:development': makePosterior({ provider: 'amp', alpha: 2, beta: 50, totalObservations: 52 }),
+      'gemini:development': makePosterior({ provider: 'gemini', alpha: 50, beta: 2, totalObservations: 52 }),
+    })
+
+    const config: RoutingConfig = { ...DEFAULT_ROUTING_CONFIG, explorationRate: 0 }
+
+    let geminiCount = 0
+    for (let i = 0; i < 20; i++) {
+      const rng = seededRng(i * 211)
+      const decision = await selectProvider(store, workType, fourArm, config, { rng })
+      if (decision.selectedProvider === 'gemini') geminiCount++
+    }
+
+    expect(geminiCount).toBeGreaterThanOrEqual(18)
+  })
+
+  it('includes gemini in the alternatives when another arm is selected', async () => {
+    const store = makeMockStore({
+      'claude:development': makePosterior({ provider: 'claude', alpha: 50, beta: 2, totalObservations: 52 }),
+      'gemini:development': makePosterior({ provider: 'gemini', alpha: 2, beta: 50, totalObservations: 52 }),
+    })
+    const config: RoutingConfig = { ...DEFAULT_ROUTING_CONFIG, explorationRate: 0 }
+    const rng = seededRng(3)
+
+    const decision = await selectProvider(store, workType, fourArm, config, { rng })
+
+    // With these posteriors claude wins; gemini must still appear as a tracked alternative.
+    expect(decision.selectedProvider).toBe('claude')
+    expect(decision.alternatives.map((a) => a.provider)).toContain('gemini')
+  })
+
+  it('updatePosterior accepts provider="gemini" and learns end-to-end', async () => {
+    const store = makeInMemoryStore()
+
+    // Reward gemini many times so its posterior is both high-mean AND tight
+    // (low variance), so exploitation samples don't get out-drawn by the other
+    // three arms sitting at the wide Beta(1,1) prior.
+    for (let i = 0; i < 40; i++) {
+      await store.updatePosterior('gemini', workType, 1)
+    }
+    // Give the other arms a clearly-losing posterior (low mean) so they don't
+    // occasionally out-sample gemini from the optimistic uniform prior.
+    for (const loser of ['claude', 'codex', 'amp'] as AgentProviderName[]) {
+      for (let i = 0; i < 40; i++) {
+        await store.updatePosterior(loser, workType, 0)
+      }
+    }
+
+    const learned = await store.getPosterior('gemini', workType)
+    expect(learned.provider).toBe('gemini')
+    expect(learned.totalObservations).toBe(40)
+    expect(betaMean(learned.alpha, learned.beta)).toBeGreaterThan(0.9)
+
+    // After learning, selectProvider should favour gemini with exploitation on.
+    const config: RoutingConfig = { ...DEFAULT_ROUTING_CONFIG, explorationRate: 0 }
+    let geminiCount = 0
+    for (let i = 0; i < 20; i++) {
+      const rng = seededRng(i * 53 + 1)
+      const decision = await selectProvider(store, workType, fourArm, config, { rng })
+      if (decision.selectedProvider === 'gemini') geminiCount++
+    }
+    // gemini's posterior dominates all three other arms; it should win nearly always.
+    expect(geminiCount).toBeGreaterThanOrEqual(19)
+  })
+})

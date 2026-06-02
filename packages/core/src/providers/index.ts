@@ -152,6 +152,7 @@ export { CodexAppServerProvider, createCodexAppServerProvider } from './codex-ap
 export { AmpProvider, createAmpProvider } from './amp-provider.js'
 export { SpringAiProvider, createSpringAiProvider } from './spring-ai-provider.js'
 export { A2aProvider, createA2aProvider } from './a2a-provider.js'
+export { GeminiProvider, createGeminiProvider, resolveGeminiThinkingBudget, GeminiDelegatedExecutionError } from './gemini-provider.js'
 
 // REN-1245: per-step reasoning-effort dispatch gate
 export { applyReasoningEffort } from './reasoning-effort-dispatch.js'
@@ -165,6 +166,7 @@ import { CodexProvider } from './codex-provider.js'
 import { AmpProvider } from './amp-provider.js'
 import { SpringAiProvider } from './spring-ai-provider.js'
 import { A2aProvider } from './a2a-provider.js'
+import { GeminiProvider } from './gemini-provider.js'
 import { logger } from '../logger.js'
 
 // ---------------------------------------------------------------------------
@@ -265,8 +267,9 @@ export function createProvider(name: AgentProviderName): AgentProvider {
     case 'a2a':
       return new A2aProvider()
     case 'gemini':
-      // TODO(gemini-first-class wave C1): replace with dedicated GeminiProvider
-      return new A2aProvider()
+      // First-class Gemini provider (wave C1). Routing/metadata surface for the
+      // Go native runner — see gemini-provider.ts for the execution model.
+      return new GeminiProvider()
     default:
       throw new Error(
         `Unknown agent provider: ${name}. Supported: claude, codex, amp, spring-ai, a2a, gemini. ` +
