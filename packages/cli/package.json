@@ -132,7 +132,7 @@
     "@donmai/code-intelligence": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.5.4",
+    "@types/node": "^25.9.1",
     "typescript": "^5.7.3",
     "vitest": "^3.2.3"
   },
