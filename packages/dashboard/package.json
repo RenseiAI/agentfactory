@@ -64,7 +64,7 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "autoprefixer": "^10",
-    "next": "15.5.18",
+    "next": "16.2.7",
     "postcss": "^8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
