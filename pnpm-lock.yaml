@@ -258,8 +258,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       '@linear/sdk':
-        specifier: ^70.0.0
-        version: 70.0.0(graphql@16.12.0)
+        specifier: ^86.0.0
+        version: 86.0.0(graphql@16.12.0)
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -837,8 +837,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@linear/sdk@70.0.0':
-    resolution: {integrity: sha512-rC4UjnFbVfV5TlXIzOhJ6xZVpmeXR0de4ALRd3ftDo9jtxkj2YUveF5swZ/1/Cd/a1S6h8OcOFvqFEz2x6zOZw==}
+  '@linear/sdk@86.0.0':
+    resolution: {integrity: sha512-Lr47874CGGPCDiPQoKYjcZDWyyu18N8zzEGvss86uzjZaeZrhNsuwKTARswG27VAJ3fPVJAvl/5dPl8QwndSlg==}
     engines: {node: '>=18.x'}
 
   '@modelcontextprotocol/sdk@1.27.1':
@@ -3252,7 +3252,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@linear/sdk@70.0.0(graphql@16.12.0)':
+  '@linear/sdk@86.0.0(graphql@16.12.0)':
     dependencies:
       '@graphql-typed-document-node/core': 3.2.0(graphql@16.12.0)
     transitivePeerDependencies:
