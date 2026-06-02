@@ -48,7 +48,6 @@ export function extractProviderConfig(
     'claude': 'anthropic',
     'amp': 'anthropic',    // Amp uses Anthropic models primarily
     'a2a': 'gemini',       // A2A is typically Gemini
-    'gemini': 'gemini',    // Gemini (first-class provider)
     'spring-ai': 'openai', // Spring AI typically wraps OpenAI
   }
   const key = keyMap[providerName]

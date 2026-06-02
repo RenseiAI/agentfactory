@@ -29,8 +29,7 @@ describe('extractProviderFromLabels', () => {
   it('resolves aliases in labels', () => {
     expect(extractProviderFromLabels(['provider:opus'])).toBe('claude')
     expect(extractProviderFromLabels(['provider:sonnet'])).toBe('claude')
-    // 'gemini' is now a canonical provider name; no alias needed
-    expect(extractProviderFromLabels(['provider:gemini'])).toBe('gemini')
+    expect(extractProviderFromLabels(['provider:gemini'])).toBe('a2a')
   })
 
   it('is case-insensitive', () => {
@@ -67,8 +66,7 @@ describe('extractProviderFromMention', () => {
   it('resolves aliases in mentions', () => {
     expect(extractProviderFromMention('use opus')).toBe('claude')
     expect(extractProviderFromMention('@sonnet')).toBe('claude')
-    // 'gemini' is now a canonical provider name; no alias needed
-    expect(extractProviderFromMention('provider:gemini')).toBe('gemini')
+    expect(extractProviderFromMention('provider:gemini')).toBe('a2a')
   })
 
   it('is case-insensitive', () => {
@@ -255,10 +253,8 @@ describe('PROVIDER_ALIASES', () => {
     expect(PROVIDER_ALIASES['sonnet']).toBe('claude')
   })
 
-  it('gemini is no longer aliased (it is a canonical provider name)', () => {
-    // 'gemini' was previously aliased to 'a2a'; it is now a canonical provider name.
-    // The alias entry has been removed — resolveAlias() returns the raw value.
-    expect(PROVIDER_ALIASES['gemini']).toBeUndefined()
+  it('maps gemini to a2a', () => {
+    expect(PROVIDER_ALIASES['gemini']).toBe('a2a')
   })
 
   it('maps codex to codex', () => {
@@ -273,7 +269,6 @@ describe('isValidProviderName', () => {
     expect(isValidProviderName('amp')).toBe(true)
     expect(isValidProviderName('spring-ai')).toBe(true)
     expect(isValidProviderName('a2a')).toBe(true)
-    expect(isValidProviderName('gemini')).toBe(true)
   })
 
   it('rejects invalid names', () => {

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { AgentProviderName } from '../providers/types.js'
 import type { AgentWorkType } from '../orchestrator/work-types.js'
 
-const AgentProviderNameSchema = z.enum(['claude', 'codex', 'amp', 'spring-ai', 'a2a', 'gemini'])
+const AgentProviderNameSchema = z.enum(['claude', 'codex', 'amp', 'spring-ai', 'a2a'])
 
 const AgentWorkTypeSchema = z.enum([
   'research',
