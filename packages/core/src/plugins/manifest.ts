@@ -246,6 +246,13 @@ export function hashPluginManifest(manifest: PluginManifest): string {
 export interface PluginSignatureVerificationResult {
   valid: boolean
   reason?: string
+  /**
+   * When true, structural checks all passed but a real cryptographic
+   * verification is still required via the async verifier path.
+   * The loader uses this flag to dispatch to the registered verifier instead
+   * of treating the sync result as a final failure.
+   */
+  needsAsyncVerify?: boolean
 }
 
 /**
@@ -304,23 +311,46 @@ export function verifyPluginSignature(
     return { valid: true }
   }
 
-  // Legacy STUB_VALID mode — retained for existing tests.
+  // Test-only stub prefixes — ONLY accepted when NODE_ENV === 'test'.
+  // In production these prefixes are treated as invalid signatures so an
+  // attacker cannot craft signatureValue:"STUB_VALID_pwned" to bypass
+  // verification.
+  const isTestEnv = process.env.NODE_ENV === 'test'
+
   if (sig.signatureValue.startsWith('STUB_VALID')) {
-    return { valid: true }
+    if (isTestEnv) {
+      return { valid: true }
+    }
+    return {
+      valid: false,
+      reason:
+        'signatureValue prefix "STUB_VALID" is only accepted in test environments ' +
+        '(NODE_ENV=test). Use a real cryptographic signature in production.',
+    }
   }
 
-  // Test prefixes for individual algorithm test modes (used in signing.test.ts)
   if (
     sig.signatureValue.startsWith('SIGSTORE_TEST:') ||
     sig.signatureValue.startsWith('COSIGN_TEST:')
   ) {
-    return { valid: true }
+    if (isTestEnv) {
+      return { valid: true }
+    }
+    return {
+      valid: false,
+      reason:
+        'signatureValue test prefixes ("SIGSTORE_TEST:", "COSIGN_TEST:") are only accepted ' +
+        'in test environments (NODE_ENV=test). Use a real cryptographic signature in production.',
+    }
   }
 
-  // Real async verification is available via verifyManifestSignature() in
-  // providers/signing.ts. This synchronous path returns an actionable error.
+  // Structural checks all passed. Cryptographic verification requires the
+  // async path — callers that support async (e.g. PluginLoader.installPlugin)
+  // must dispatch to the registered verifier via getVerifier() from
+  // providers/verifiers/index.ts. The needsAsyncVerify flag signals this.
   return {
     valid: false,
+    needsAsyncVerify: true,
     reason:
       `Cryptographic verification for algorithm '${sig.algorithm}' requires the async path. ` +
       `Use verifyManifestSignature() from providers/signing.ts, or use ` +

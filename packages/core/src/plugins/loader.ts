@@ -15,9 +15,11 @@
  * Architecture reference: rensei-architecture/015-plugin-spec.md
  * Depends on: REN-1279 provider base contract (packages/core/src/providers/base.ts)
  *
- * Signing note: Full sigstore wiring is REN-1314. This module uses STUB_VALID
- * mode (verifyPluginSignature from manifest.ts) so consumers can program
- * against the contract today.
+ * Signing note: Structural signature checks (hash, empty-value, publicKey) run
+ * synchronously via verifyPluginSignature() from manifest.ts. Cryptographic
+ * verification then dispatches to the registered verifier (sigstore / cosign /
+ * minisign / ed25519) via getVerifier() from providers/verifiers/index.ts.
+ * Test bypass is gated behind NODE_ENV=test or _testBypassSignatureVerify.
  */
 
 import fs from 'node:fs'
@@ -44,6 +46,10 @@ import {
   type TrustedIssuerSet,
 } from './trusted-issuers.js'
 import type { ProviderFamily } from '../providers/base.js'
+import {
+  getVerifier,
+  type VerifierInput,
+} from '../providers/verifiers/index.js'
 
 // ---------------------------------------------------------------------------
 // Discovery source type
@@ -315,11 +321,14 @@ export class PluginLoader {
       }
     }
 
-    // 2. Signature verification
+    // 2. Signature verification — synchronous structural checks (hash, empty
+    // signatureValue, publicKey presence) and test-only stub bypass.
     const sigResult = verifyPluginSignature(manifest, {
       _testBypassVerify: options._testBypassSignatureVerify,
     })
-    if (!sigResult.valid) {
+    if (!sigResult.valid && !sigResult.needsAsyncVerify) {
+      // A structural check failed (wrong hash, empty signatureValue, etc.)
+      // or a test-stub prefix was used outside of a test environment.
       if (this.options.requireSignatures || manifest.signature) {
         // Signature present but invalid — always fatal
         return {
@@ -334,7 +343,68 @@ export class PluginLoader {
       warnings.push(`Plugin '${pluginId}' has no valid signature (OSS mode, accepted).`)
     }
 
-    // 2b. Trusted-issuer gate (REN-1344)
+    // 2b. Async cryptographic verification.
+    //
+    // Runs when a signature is present AND one of:
+    //   (a) sigResult.needsAsyncVerify — structural checks passed, real crypto
+    //       still needed (the sync path cannot verify real signatures).
+    //   (b) sigResult.valid — sync accepted the signature (test-bypass or test
+    //       stub in NODE_ENV=test), but we still run crypto for non-stub sigs.
+    //
+    // Test-prefix stub values (STUB_VALID, SIGSTORE_TEST:, COSIGN_TEST:) skip
+    // the real crypto call in test environments, matching manifest.ts behaviour.
+    // _testBypassSignatureVerify skips this entire block.
+    if (
+      manifest.signature &&
+      (sigResult.valid || sigResult.needsAsyncVerify) &&
+      !options._testBypassSignatureVerify
+    ) {
+      const sig = manifest.signature
+      const isTestEnv = this.options._testNodeEnv === 'test'
+      const isTestPrefixedSig =
+        sig.signatureValue.startsWith('STUB_VALID') ||
+        sig.signatureValue.startsWith('SIGSTORE_TEST:') ||
+        sig.signatureValue.startsWith('COSIGN_TEST:')
+
+      if (!isTestEnv || !isTestPrefixedSig) {
+        // Real signature — run the registered cryptographic verifier.
+        const verifier = getVerifier(sig.algorithm)
+        if (!verifier) {
+          return {
+            pluginId,
+            success: false,
+            errors: [
+              `Signature verification failed: no verifier registered for algorithm '${sig.algorithm}'. ` +
+              `Supported algorithms: sigstore, cosign, minisign, ed25519.`,
+            ],
+            warnings,
+            source,
+          }
+        }
+        const verifierInput: VerifierInput = {
+          manifestHash: sig.manifestHash,
+          signatureValue: sig.signatureValue,
+          publicKey: sig.publicKey ?? '',
+          signer: sig.signer,
+          attestedAt: sig.attestedAt,
+          attestations: sig.attestations,
+        }
+        const cryptoResult = await verifier.verify(verifierInput)
+        if (!cryptoResult.valid) {
+          return {
+            pluginId,
+            success: false,
+            errors: [
+              `Signature verification failed: ${cryptoResult.reason ?? 'Cryptographic verification failed'}`,
+            ],
+            warnings,
+            source,
+          }
+        }
+      }
+    }
+
+    // 2c. Trusted-issuer gate (REN-1344)
     // Only run when not bypassed; in test bypass mode we skip both crypto
     // verification and the trust check to keep test fixtures simple.
     if (!options._testBypassSignatureVerify) {
