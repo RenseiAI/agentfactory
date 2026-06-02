@@ -1,0 +1,31 @@
+name: Security Scan
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+  schedule: [{ cron: "0 7 * * 1" }]
+permissions:
+  contents: read
+jobs:
+
+  dependency-audit:
+    name: Dependency audit (pnpm, report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "10" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22.12", cache: pnpm }
+      - name: pnpm audit (high+)
+        run: pnpm audit --audit-level=high || echo "::warning::pnpm audit reported advisories (report-only; see Security Remediation plan)"
+  semgrep:
+    name: SAST (semgrep, report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Run semgrep
+        run: |
+          pip install semgrep==1.97.0
+          semgrep scan --config p/security-audit --config p/secrets --error || echo "::warning::semgrep reported findings (report-only)"
