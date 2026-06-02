@@ -54,7 +54,7 @@ export interface ProfileResolutionContext {
 // Label/mention extraction helpers
 // ---------------------------------------------------------------------------
 
-const VALID_PROVIDERS = new Set(['claude', 'codex', 'amp', 'spring-ai', 'a2a'])
+const VALID_PROVIDERS = new Set(['claude', 'codex', 'amp', 'spring-ai', 'a2a', 'gemini'])
 
 function extractProviderFromLabels(labels: string[]): AgentProviderName | null {
   for (const label of labels) {
@@ -108,6 +108,7 @@ export function inferProviderForModel(
   }
   if (/^claude-/i.test(model)) return 'claude'
   if (/^(gpt-|o1-|o3-|o4-)/i.test(model)) return 'codex'
+  if (/^gemini-/i.test(model)) return 'gemini'
   return null
 }
 

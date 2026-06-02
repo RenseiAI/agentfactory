@@ -42,7 +42,7 @@ export type ProjectConfig = z.infer<typeof ProjectConfigSchema>
 const ProjectPathValueSchema = z.union([z.string(), ProjectConfigSchema])
 
 /** Valid agent provider names */
-const AgentProviderNameSchema = z.enum(['claude', 'codex', 'amp', 'spring-ai', 'a2a'])
+const AgentProviderNameSchema = z.enum(['claude', 'codex', 'amp', 'spring-ai', 'a2a', 'gemini'])
 
 /** Normalized effort levels (provider-agnostic) */
 export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh'])

@@ -217,7 +217,30 @@ export function createToolPermissionAdapter(format: ToolPermissionFormat | Agent
     case 'amp':
     case 'a2a':
       return new ClaudeToolPermissionAdapter()
+    case 'gemini':
+      // Gemini has no tool-permission grammar at this stage; return a permissive
+      // pass-through adapter so permissions are not silently dropped.
+      // TODO(gemini-first-class wave C1): implement Gemini-native tool permission translation.
+      return new GeminiToolPermissionAdapter()
     default:
       return new ClaudeToolPermissionAdapter()
+  }
+}
+
+/**
+ * Gemini tool permission adapter (permissive/no-op).
+ *
+ * Gemini does not have a tool-permission grammar equivalent to Claude Code's
+ * Bash(cmd:*) allowlist or Codex's sandbox policy. This adapter passes all
+ * permissions through unchanged so templates remain portable across providers
+ * without silently dropping permission declarations.
+ *
+ * TODO(gemini-first-class wave C1): replace with Gemini-native translation
+ * once the Google GenAI SDK tool-calling permission surface is defined.
+ */
+export class GeminiToolPermissionAdapter implements ToolPermissionAdapter {
+  translatePermissions(permissions: ToolPermission[]): string[] {
+    // Pass through as-is — no Gemini-native format yet
+    return permissions.map(p => (typeof p === 'string' ? p : JSON.stringify(p)))
   }
 }

@@ -43,8 +43,8 @@ describe('AgentRuntimeProvider alias', () => {
   })
 
   it('all provider names satisfy AgentProviderName', () => {
-    const names: AgentProviderName[] = ['claude', 'codex', 'amp', 'spring-ai', 'a2a']
-    expect(names).toHaveLength(5)
+    const names: AgentProviderName[] = ['claude', 'codex', 'amp', 'spring-ai', 'a2a', 'gemini']
+    expect(names).toHaveLength(6)
   })
 })
 
@@ -86,15 +86,17 @@ describe('emitsSubagentEvents capability flag', () => {
       new SpringAiProvider(),
       new AmpProvider(),
       new A2aProvider(),
+      // 'gemini' routes to A2aProvider until the dedicated GeminiProvider lands (wave C1)
+      new A2aProvider(),
     ]
     const emitters = providers.filter((p) => p.capabilities.emitsSubagentEvents)
     const nonEmitters = providers.filter((p) => !p.capabilities.emitsSubagentEvents)
     expect(emitters.map((p) => p.name)).toEqual(['claude'])
-    // Use arrayContaining to avoid asserting order (providers array order: codex, spring-ai, amp, a2a)
+    // Use arrayContaining to avoid asserting order (providers array order: codex, spring-ai, amp, a2a, a2a)
     expect(nonEmitters.map((p) => p.name)).toEqual(
       expect.arrayContaining(['codex', 'amp', 'spring-ai', 'a2a']),
     )
-    expect(nonEmitters).toHaveLength(4)
+    expect(nonEmitters).toHaveLength(5)
   })
 })
 
@@ -129,7 +131,7 @@ describe('humanLabel capability field', () => {
 // ---------------------------------------------------------------------------
 
 describe('AGENT_RUNTIME_PROVIDER_HUMAN_LABELS registry', () => {
-  const ALL_PROVIDERS: AgentProviderName[] = ['claude', 'codex', 'amp', 'spring-ai', 'a2a']
+  const ALL_PROVIDERS: AgentProviderName[] = ['claude', 'codex', 'amp', 'spring-ai', 'a2a', 'gemini']
 
   it('contains an entry for every AgentProviderName', () => {
     for (const name of ALL_PROVIDERS) {

@@ -237,7 +237,8 @@ export const PROVIDER_ALIASES: Record<string, AgentProviderName> = {
   opus: 'claude',
   sonnet: 'claude',
   codex: 'codex',
-  gemini: 'a2a',
+  // 'gemini' was previously aliased to 'a2a'; it is now a canonical provider name.
+  // The fallback in resolveAlias() returns the raw value, so 'gemini' resolves correctly.
 }
 
 // ---------------------------------------------------------------------------
@@ -263,9 +264,12 @@ export function createProvider(name: AgentProviderName): AgentProvider {
       return new SpringAiProvider()
     case 'a2a':
       return new A2aProvider()
+    case 'gemini':
+      // TODO(gemini-first-class wave C1): replace with dedicated GeminiProvider
+      return new A2aProvider()
     default:
       throw new Error(
-        `Unknown agent provider: ${name}. Supported: claude, codex, amp, spring-ai, a2a. ` +
+        `Unknown agent provider: ${name}. Supported: claude, codex, amp, spring-ai, a2a, gemini. ` +
         `If this is a CLI tool, ensure the binary is installed and on your PATH.`
       )
   }
@@ -721,7 +725,7 @@ export function resolveSubAgentModel(context?: {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-const VALID_PROVIDER_NAMES: AgentProviderName[] = ['claude', 'codex', 'amp', 'spring-ai', 'a2a']
+const VALID_PROVIDER_NAMES: AgentProviderName[] = ['claude', 'codex', 'amp', 'spring-ai', 'a2a', 'gemini']
 
 export function isValidProviderName(name: string): name is AgentProviderName {
   return VALID_PROVIDER_NAMES.includes(name as AgentProviderName)

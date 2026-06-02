@@ -205,7 +205,7 @@ export const SandboxCapabilityLabels = {
 } as const
 
 /** Supported agent provider names */
-export type AgentProviderName = 'claude' | 'codex' | 'amp' | 'spring-ai' | 'a2a'
+export type AgentProviderName = 'claude' | 'codex' | 'amp' | 'spring-ai' | 'a2a' | 'gemini'
 
 /**
  * Agent Provider
@@ -280,6 +280,7 @@ export const AGENT_RUNTIME_PROVIDER_HUMAN_LABELS: Readonly<Record<AgentProviderN
   amp: 'Amp',
   'spring-ai': 'Spring AI',
   a2a: 'A2A',
+  gemini: 'Gemini',
 } as const
 
 export interface AgentProvider {
