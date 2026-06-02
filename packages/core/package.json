@@ -48,7 +48,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.7",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@donmai/architectural-intelligence": "workspace:*",
-    "@sigstore/verify": "3.1.0",
+    "@sigstore/verify": "4.0.0",
     "dotenv": "^17.2.3",
     "handlebars": "^4.7.8",
     "yaml": "^2.8.2",
