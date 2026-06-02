@@ -16,7 +16,6 @@ import { CodexProvider } from './codex-provider.js'
 import { SpringAiProvider } from './spring-ai-provider.js'
 import { AmpProvider } from './amp-provider.js'
 import { A2aProvider } from './a2a-provider.js'
-import { GeminiProvider } from './gemini-provider.js'
 import {
   AGENT_RUNTIME_PROVIDER_HUMAN_LABELS,
 } from './index.js'
@@ -80,11 +79,6 @@ describe('emitsSubagentEvents capability flag', () => {
     expect(p.capabilities.emitsSubagentEvents).toBe(false)
   })
 
-  it('GeminiProvider declares emitsSubagentEvents: false', () => {
-    const p = new GeminiProvider()
-    expect(p.capabilities.emitsSubagentEvents).toBe(false)
-  })
-
   it('only Claude emits subagent events among the core provider set', () => {
     const providers = [
       new ClaudeProvider(),
@@ -92,15 +86,15 @@ describe('emitsSubagentEvents capability flag', () => {
       new SpringAiProvider(),
       new AmpProvider(),
       new A2aProvider(),
-      // Gemini is now a distinct first-class provider (wave C1), no longer aliased to A2A.
-      new GeminiProvider(),
+      // 'gemini' routes to A2aProvider until the dedicated GeminiProvider lands (wave C1)
+      new A2aProvider(),
     ]
     const emitters = providers.filter((p) => p.capabilities.emitsSubagentEvents)
     const nonEmitters = providers.filter((p) => !p.capabilities.emitsSubagentEvents)
     expect(emitters.map((p) => p.name)).toEqual(['claude'])
-    // Use arrayContaining to avoid asserting order (providers array order: codex, spring-ai, amp, a2a, gemini)
+    // Use arrayContaining to avoid asserting order (providers array order: codex, spring-ai, amp, a2a, a2a)
     expect(nonEmitters.map((p) => p.name)).toEqual(
-      expect.arrayContaining(['codex', 'amp', 'spring-ai', 'a2a', 'gemini']),
+      expect.arrayContaining(['codex', 'amp', 'spring-ai', 'a2a']),
     )
     expect(nonEmitters).toHaveLength(5)
   })
@@ -129,10 +123,6 @@ describe('humanLabel capability field', () => {
 
   it('A2aProvider humanLabel is "A2A"', () => {
     expect(new A2aProvider().capabilities.humanLabel).toBe('A2A')
-  })
-
-  it('GeminiProvider humanLabel is "Gemini"', () => {
-    expect(new GeminiProvider().capabilities.humanLabel).toBe('Gemini')
   })
 })
 
@@ -165,7 +155,6 @@ describe('AGENT_RUNTIME_PROVIDER_HUMAN_LABELS registry', () => {
       new SpringAiProvider(),
       new AmpProvider(),
       new A2aProvider(),
-      new GeminiProvider(),
     ]
     for (const p of providerInstances) {
       const registryLabel = AGENT_RUNTIME_PROVIDER_HUMAN_LABELS[p.name]
