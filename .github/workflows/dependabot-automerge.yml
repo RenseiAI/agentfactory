@@ -1,0 +1,28 @@
+name: Dependabot auto-merge
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+      # Auto-merge only patch & minor bumps. Grouped PRs report the highest bump in
+      # the group, so any group containing a major is correctly excluded here.
+      # Requires the repo setting "Allow auto-merge" + required status checks to be
+      # enabled to actually merge; until then the call is a no-op so CI stays green.
+      - name: Enable auto-merge for patch & minor updates
+        if: ${{ steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor' }}
+        run: gh pr merge --auto --squash "$PR_URL" || echo "Auto-merge not armed yet (enable 'Allow auto-merge' + required checks); skipping."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
