@@ -51,7 +51,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "lucide-react": "^0.400.0",
-    "swr": "^2.2.0",
+    "swr": "^2.4.1",
     "tailwind-merge": "^2.2.0"
   },
   "peerDependencies": {
@@ -66,8 +66,8 @@
     "autoprefixer": "^10",
     "next": "15.5.18",
     "postcss": "^8",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tailwindcss": "^3.4.0",
     "typescript": "^5",
     "vitest": "^3.2.3"
