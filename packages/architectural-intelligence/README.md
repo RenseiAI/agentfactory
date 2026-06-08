@@ -1,5 +1,12 @@
 # @donmai/architectural-intelligence
 
+> **DEPRECATED.** This package is deprecated. The architectural-intelligence
+> layer is being reimplemented natively in Go inside the `donmai` binary, and
+> this TypeScript package has no live runtime consumer. It is preserved (not
+> removed) for OSS continuity because downstream npm consumers may pin it, but
+> it will receive no further feature work and will be removed in a future major.
+> New work should target the native `donmai arch` surface.
+
 System-level synthesis of patterns, conventions, decisions, and drift across a codebase.
 
 Part of the [Donmai](https://github.com/RenseiAI/donmai-libraries) toolchain.
@@ -129,7 +136,10 @@ Requirements:
 
 ## Status
 
-Consumed at runtime by [`@donmai/core`](https://www.npmjs.com/package/@donmai/core) (orchestrator + context injection).
+**Deprecated.** No live runtime consumer remains — the architectural-intelligence
+layer is moving to a native Go implementation inside the `donmai` binary. This
+package is kept published for OSS continuity and downstream pins only; expect no
+further feature work.
 
 ## License
 

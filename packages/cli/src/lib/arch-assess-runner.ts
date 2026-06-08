@@ -1,10 +1,12 @@
 /**
- * Architectural Intelligence — CLI runner for `af-arch assess`
+ * Architectural Intelligence — CLI runner for `af-arch assess` (DEPRECATED)
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
- * §"Architectural Intelligence" — Drift detection
+ * DEPRECATED: this runner backs the deprecated `af-arch` binary. The native Go
+ * `donmai arch` command supersedes it. Retained as a thin shim for OSS
+ * continuity; do not build new integrations against it.
  *
- * REN-1326: CLI runner for the `af-arch assess` command.
+ * Architecture reference: the OSS architecture corpus
+ * (donmai-architecture/007-intelligence-services.md) — Drift detection.
  *
  * Responsibilities:
  *   1. Parse and validate CLI arguments.

@@ -4,6 +4,10 @@
 
 ### Deprecations
 
+- **`af-arch` binary (`@donmai/cli`)** — Deprecated in favour of the native Go `donmai arch` command. The shim still runs but now emits a runtime deprecation notice on stderr; it will be removed in a future release. Use `donmai arch assess <pr-url>` instead — the `assess` subcommand, all flags, and the JSON output are preserved. See [`docs/migration-from-legacy-cli.md`](./docs/migration-from-legacy-cli.md) for the migration path.
+
+- **`@donmai/architectural-intelligence` package** — Deprecated. The architectural-intelligence layer is being reimplemented natively in Go inside the `donmai` binary, and the package has no live runtime consumer. It is preserved (not hard-deleted) for OSS continuity because downstream npm consumers may pin it; it will be removed in a future major. New work should target the Go `donmai arch` surface.
+
 - **`@renseiai/daemon` package** — Deprecated in favour of the Go daemon shipped inside the `af` / `rensei` binary. Use `rensei daemon run` (or `af daemon run`) as the long-running entry point. The Node package is preserved at version 0.1.0 for OSS continuity and will be removed in cycle 6 after the CI smoke harness has soaked for 7 consecutive nights. See [`docs/migration-from-legacy-cli.md`](./docs/migration-from-legacy-cli.md#daemon--renseiaidaemon-→-af-daemon--rensei-daemon) for the migration path.
 
 ## v0.8.59

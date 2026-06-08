@@ -2,6 +2,15 @@
 
 CLI tools for [Donmai](https://github.com/RenseiAI/donmai-libraries). Run a local orchestrator, remote workers, worker fleets, and queue management.
 
+## Deprecations
+
+- **`af-arch`** — Deprecated in favour of the native Go `donmai arch` command.
+  The shim still works and emits a runtime deprecation notice on stderr; it will
+  be removed in a future release. Use `donmai arch assess <pr-url>` instead —
+  the `assess` subcommand, all flags, and the JSON output are preserved. See
+  [`docs/migration-from-legacy-cli.md`](../../docs/migration-from-legacy-cli.md)
+  for the full legacy-binary mapping.
+
 ## Installation
 
 ```bash
