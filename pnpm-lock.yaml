@@ -21,8 +21,8 @@ importers:
         specifier: ^2.9.6
         version: 2.9.6
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/architectural-intelligence:
     dependencies:
@@ -37,8 +37,8 @@ importers:
         specifier: ^22.5.4
         version: 22.19.10
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -65,8 +65,8 @@ importers:
         specifier: ^22.5.4
         version: 22.19.10
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -94,8 +94,8 @@ importers:
         specifier: ^22.5.4
         version: 22.19.10
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -137,8 +137,8 @@ importers:
         specifier: ^22.5.4
         version: 22.19.10
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -149,8 +149,8 @@ importers:
         specifier: ^22.5.4
         version: 22.19.10
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -171,8 +171,8 @@ importers:
         specifier: ^22.5.4
         version: 22.19.10
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -241,8 +241,8 @@ importers:
         specifier: ^3.4.0
         version: 3.4.19(tsx@4.21.0)(yaml@2.8.2)
       typescript:
-        specifier: ^5
-        version: 5.9.3
+        specifier: ^6
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -268,8 +268,8 @@ importers:
         specifier: ^22.5.4
         version: 22.19.10
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -290,8 +290,8 @@ importers:
         specifier: ^22.5.4
         version: 22.19.10
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -318,8 +318,8 @@ importers:
         specifier: 15.5.18
         version: 15.5.18(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -340,8 +340,8 @@ importers:
         specifier: ^22.5.4
         version: 22.19.10
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -355,8 +355,8 @@ importers:
         specifier: workspace:*
         version: link:../linear
       typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/node@22.19.10)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
@@ -2735,8 +2735,8 @@ packages:
     resolution: {integrity: sha512-OZs6gsjF4vMp32qrCbiVSkrFmXtG/AZhY3t0iAMrMBiAZyV9oALtXO8hsrHbMXF9x6L3grlFuwW2oAz7cav+Gw==}
     engines: {node: '>= 0.6'}
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -5007,7 +5007,7 @@ snapshots:
       media-typer: 1.1.0
       mime-types: 3.0.2
 
-  typescript@5.9.3: {}
+  typescript@6.0.3: {}
 
   uglify-js@3.19.3:
     optional: true

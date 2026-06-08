@@ -52,7 +52,7 @@
   "dependencies": {},
   "devDependencies": {
     "@types/node": "^22.5.4",
-    "typescript": "^5.7.3",
+    "typescript": "^6.0.3",
     "vitest": "^3.2.3"
   },
   "scripts": {
