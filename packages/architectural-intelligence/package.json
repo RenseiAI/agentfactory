@@ -2,7 +2,8 @@
   "name": "@donmai/architectural-intelligence",
   "version": "0.9.0",
   "type": "module",
-  "description": "Architectural Intelligence — system-level synthesis of patterns, conventions, decisions, and drift across a tenant's codebase",
+  "description": "DEPRECATED — Architectural Intelligence (TypeScript). Superseded by the native Go `donmai arch` implementation; preserved for OSS continuity / downstream pins only.",
+  "deprecated": "@donmai/architectural-intelligence is deprecated and will be removed in a future major. The architectural-intelligence layer is now native Go inside the donmai binary (use `donmai arch`). This package is preserved for OSS continuity / downstream pins only and receives no further feature work.",
   "author": "Rensei AI (https://rensei.ai)",
   "license": "MIT",
   "engines": {

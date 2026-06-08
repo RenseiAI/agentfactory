@@ -1,18 +1,17 @@
 #!/usr/bin/env node
 /**
- * Architectural Intelligence CLI — af-arch / rensei arch
+ * Architectural Intelligence CLI — af-arch (DEPRECATED)
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
- * §"Architectural Intelligence" — Drift detection
+ * DEPRECATED: this binary is superseded by the native Go `donmai arch`
+ * command. It emits a runtime deprecation notice on stderr and remains as a
+ * thin shim for OSS continuity. New users should run `donmai arch assess`.
  *
- * REN-1326: CLI surface for ad-hoc drift assessment.
+ * Architecture reference: the OSS architecture corpus
+ * (donmai-architecture/007-intelligence-services.md) — Drift detection.
  *
  * Usage:
- *   pnpm af-arch assess <pr-url>
- *   pnpm af-arch assess --repository <repo> --pr <number>
- *
- * The `af-tui` (`rensei arch assess`) surface is stubbed here with a
- * deprecation pointer until REN-1322 ships the full TUI integration.
+ *   af-arch assess <pr-url>
+ *   af-arch assess --repository <repo> --pr <number>
  *
  * Environment:
  *   RENSEI_DRIFT_GATE      — Gate policy: 'none' | 'no-severity-high' |
@@ -38,9 +37,23 @@ config({ path: path.resolve(process.cwd(), '.env.local'), quiet: true })
 
 import { runArchAssess, parseArchArgs } from './lib/arch-assess-runner.js'
 
+/**
+ * Emit a one-time deprecation notice on stderr. Stderr (not stdout) is used so
+ * the JSON contract on stdout stays clean for downstream consumers / pipes.
+ */
+function printDeprecationNotice(): void {
+  console.error(
+    'DEPRECATED: af-arch is deprecated — use `donmai arch` instead. ' +
+      'The native Go `donmai arch` command supersedes this shim; it will be removed in a future release.',
+  )
+}
+
 function printHelp(): void {
   console.log(`
 Architectural Intelligence CLI — drift detection for PRs and commits
+
+DEPRECATED: af-arch is deprecated — use \`donmai arch\` instead.
+The native Go \`donmai arch\` command supersedes this shim.
 
 Usage:
   af-arch assess <pr-url>
@@ -81,13 +94,15 @@ Examples:
   af-arch assess https://github.com/org/repo/pull/123 --gate-policy zero-deviations
   RENSEI_DRIFT_GATE=max:2 af-arch assess https://github.com/org/repo/pull/123
 
-af-tui surface (rensei arch assess):
-  Full TUI integration is deferred to REN-1322. Use 'af-arch assess' for
-  ad-hoc assessment in the meantime. Both produce identical JSON output.
+Successor:
+  This binary is deprecated. The native Go \`donmai arch assess\` command
+  replaces it with identical JSON output and the same assess subcommand/flags.
 `)
 }
 
 async function main(): Promise<void> {
+  printDeprecationNotice()
+
   const { command, prUrl, args } = parseArchArgs(process.argv.slice(2))
 
   if (!command || command === 'help' || args['help'] || args['h']) {
