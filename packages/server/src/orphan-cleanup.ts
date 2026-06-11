@@ -12,7 +12,9 @@
 import { createLogger } from './logger.js'
 import {
   getAllSessions,
+  getSessionState,
   resetSessionForRequeue,
+  updateSessionStatus,
   type AgentSessionState,
 } from './session-storage.js'
 import { listWorkers } from './worker-storage.js'
@@ -35,6 +37,28 @@ const log = createLogger('orphan-cleanup')
 // How long a session can be running without a valid worker before being considered orphaned
 const ORPHAN_THRESHOLD_MS = 120_000 // 2 minutes (worker TTL + buffer)
 
+// Statuses that mean a session's work is finished and will never resume
+const TERMINAL_STATUSES = new Set<AgentSessionState['status']>([
+  'completed',
+  'failed',
+  'stopped',
+])
+
+/**
+ * Check whether a session row is a per-dispatch alias: a row stored under its
+ * own key whose `trackerSessionId` points at a DIFFERENT (shared) tracker
+ * session. Every lifecycle write (claim/start/complete/requeue) keys off
+ * `trackerSessionId`, so alias rows never receive status updates under their
+ * own key. They must never drive re-dispatch (the tracker-keyed session owns
+ * the lifecycle) and are reconciled by `findStrandedDispatchRows` instead.
+ */
+function isPerDispatchAliasRow(session: AgentSessionState): boolean {
+  return (
+    !!session.rowSessionId &&
+    session.rowSessionId !== session.trackerSessionId
+  )
+}
+
 /**
  * Callback for when an orphaned session is re-queued
  */
@@ -50,10 +74,12 @@ export interface OrphanCleanupResult {
   orphaned: number
   requeued: number
   failed: number
+  /** Stranded per-dispatch rows terminal-marked under their own key */
+  terminalMarked: number
   details: Array<{
     sessionId: string
     issueIdentifier: string
-    action: 'requeued' | 'failed'
+    action: 'requeued' | 'failed' | 'terminal-marked'
     reason?: string
     /** Path to worktree that may need cleanup (if on worker machine) */
     worktreePath?: string
@@ -83,6 +109,12 @@ export async function findOrphanedSessions(): Promise<AgentSessionState[]> {
   for (const session of sessions) {
     // Only check running or claimed sessions
     if (session.status !== 'running' && session.status !== 'claimed') {
+      continue
+    }
+
+    // Per-dispatch alias rows never receive lifecycle writes under their own
+    // key — re-queuing one would duplicate the tracker-keyed session's work
+    if (isPerDispatchAliasRow(session)) {
       continue
     }
 
@@ -141,6 +173,13 @@ export async function findZombiePendingSessions(): Promise<AgentSessionState[]> 
   for (const session of sessions) {
     if (session.status !== 'pending') continue
 
+    // Per-dispatch alias rows are not zombies: their pending status is frozen
+    // by design (lifecycle writes key off trackerSessionId). Re-dispatching
+    // the tracker session for every alias row caused an infinite
+    // re-queue -> pop -> drop churn on each cleanup pass. They are reconciled
+    // by findStrandedDispatchRows instead.
+    if (isPerDispatchAliasRow(session)) continue
+
     // Only consider sessions older than the threshold
     const age = now - session.updatedAt
     if (age < ZOMBIE_PENDING_THRESHOLD_MS) continue
@@ -169,6 +208,38 @@ export async function findZombiePendingSessions(): Promise<AgentSessionState[]> 
 }
 
 /**
+ * Find stranded per-dispatch rows — alias rows written under their own key
+ * whose stored `trackerSessionId` was later patched to a shared tracker
+ * session. Since every lifecycle write keys off `trackerSessionId`, these
+ * rows never leave their initial status under their own key. Once the
+ * tracker-keyed session is terminal (or has expired), the row is permanently
+ * stranded: it renders as a phantom queued/parked session and, before this
+ * sweep existed, was re-queued on every cleanup pass.
+ *
+ * Returns alias rows that are non-terminal and older than the zombie
+ * threshold. The caller decides terminality by checking the tracker-keyed
+ * session state.
+ */
+export async function findStrandedDispatchRows(): Promise<AgentSessionState[]> {
+  const sessions = await getAllSessions()
+  const now = Date.now()
+  const stranded: AgentSessionState[] = []
+
+  for (const session of sessions) {
+    if (!isPerDispatchAliasRow(session)) continue
+    if (TERMINAL_STATUSES.has(session.status)) continue
+
+    // Grace period: leave fresh rows alone (dispatch may still be in flight)
+    const age = now - session.updatedAt
+    if (age < ZOMBIE_PENDING_THRESHOLD_MS) continue
+
+    stranded.push(session)
+  }
+
+  return stranded
+}
+
+/**
  * Clean up orphaned sessions by re-queuing them
  *
  * @param callbacks - Optional callbacks for external integrations (e.g., posting Linear comments)
@@ -181,6 +252,7 @@ export async function cleanupOrphanedSessions(
     orphaned: 0,
     requeued: 0,
     failed: 0,
+    terminalMarked: 0,
     details: [],
     worktreePathsToCleanup: [],
   }
@@ -375,6 +447,81 @@ export async function cleanupOrphanedSessions(
       log.error('Failed to find zombie pending sessions', { error: err })
     }
 
+    // Terminal-mark stranded per-dispatch rows under their OWN key.
+    // These rows alias a shared tracker session; when the tracker-keyed state
+    // is terminal or missing the alias can never progress, so stop it here
+    // instead of letting it strand as a phantom forever.
+    try {
+      const stranded = await findStrandedDispatchRows()
+
+      if (stranded.length > 0) {
+        log.info('Found stranded per-dispatch session rows', {
+          count: stranded.length,
+        })
+      }
+
+      for (const session of stranded) {
+        // findStrandedDispatchRows guarantees rowSessionId is set
+        const rowSessionId = session.rowSessionId as string
+        const issueIdentifier =
+          session.issueIdentifier || session.issueId.slice(0, 8)
+
+        try {
+          const tracker = await getSessionState(session.trackerSessionId)
+
+          if (tracker && !TERMINAL_STATUSES.has(tracker.status)) {
+            // Tracker session is still live — it owns the lifecycle. The
+            // alias row converges on a later pass once the tracker finishes.
+            log.debug('Stranded row tracker session still active, skipping', {
+              rowSessionId,
+              trackerSessionId: session.trackerSessionId,
+              trackerStatus: tracker.status,
+            })
+            continue
+          }
+
+          const stoppedReason = tracker
+            ? `Stranded per-dispatch row: tracker session ${session.trackerSessionId} is ${tracker.status}`
+            : `Stranded per-dispatch row: tracker session ${session.trackerSessionId} no longer exists`
+
+          const marked = await updateSessionStatus(rowSessionId, 'stopped', {
+            stoppedReason,
+          })
+
+          if (marked) {
+            result.terminalMarked++
+            result.details.push({
+              sessionId: rowSessionId,
+              issueIdentifier,
+              action: 'terminal-marked',
+              reason: stoppedReason,
+            })
+
+            log.info('Terminal-marked stranded per-dispatch row', {
+              rowSessionId,
+              trackerSessionId: session.trackerSessionId,
+              issueIdentifier,
+              trackerStatus: tracker?.status ?? 'missing',
+            })
+          }
+        } catch (err) {
+          log.error('Failed to terminal-mark stranded per-dispatch row', {
+            rowSessionId,
+            error: err,
+          })
+          result.failed++
+          result.details.push({
+            sessionId: rowSessionId,
+            issueIdentifier,
+            action: 'failed',
+            reason: err instanceof Error ? err.message : 'Unknown error',
+          })
+        }
+      }
+    } catch (err) {
+      log.error('Failed to reconcile stranded per-dispatch rows', { error: err })
+    }
+
     // Also check for expired issue locks with pending work
     try {
       const promoted = await cleanupExpiredLocksWithPendingWork()
@@ -409,6 +556,7 @@ export async function cleanupOrphanedSessions(
       orphaned: result.orphaned,
       requeued: result.requeued,
       failed: result.failed,
+      terminalMarked: result.terminalMarked,
       worktreePathsToCleanup: result.worktreePathsToCleanup.length,
     })
 

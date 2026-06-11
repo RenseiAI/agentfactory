@@ -66,7 +66,10 @@ async function toPublicSession(
   }
 
   return {
-    id: hashSessionId(session.trackerSessionId),
+    // Hash the row's OWN id, not the (possibly shared) trackerSessionId:
+    // multiple per-dispatch rows can alias one tracker session, and hashing
+    // the tracker id rendered them all as N duplicates of the same public id.
+    id: hashSessionId(session.rowSessionId ?? session.trackerSessionId),
     identifier: session.issueIdentifier || 'Unknown',
     status: toPublicStatus(session.status, isParked),
     workType: session.workType || 'development',

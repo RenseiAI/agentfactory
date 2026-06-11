@@ -123,6 +123,26 @@ export interface AgentSessionState {
    * Plan: runs/2026-05-27-linear-agentsession-integration-plan.md §2.10 (F2)
    */
   workflowInstanceId?: string
+
+  /**
+   * The session row's OWN storage id, derived from its Redis key at read time.
+   *
+   * Normally equals `trackerSessionId`. It differs for per-dispatch rows:
+   * a dispatcher may create a row under its own UUID key and later patch the
+   * stored `trackerSessionId` to a shared tracker session. Every lifecycle
+   * write (claim/start/complete/requeue) keys off `trackerSessionId`, so
+   * such rows can only ever be updated under THIS id. Read paths
+   * (`getSessionState`, `getAllSessions`, `getSessionStateByIssue`) always
+   * repopulate it from the actual key, so a stale persisted value can never
+   * mask the true row identity.
+   */
+  rowSessionId?: string
+
+  /**
+   * Why the session was stopped. Set when orphan cleanup terminal-marks a
+   * stranded per-dispatch row that can no longer make progress.
+   */
+  stoppedReason?: string
 }
 
 /**
@@ -166,6 +186,18 @@ function migrateSessionState(raw: AgentSessionState): AgentSessionState {
 }
 
 /**
+ * Hydrate a raw Redis value into session state, stamping the row's own id
+ * (derived from the Redis key it was read from). Always overwrites any
+ * persisted `rowSessionId` — the key is the source of truth.
+ */
+function hydrateSessionState(
+  raw: AgentSessionState,
+  rowSessionId: string
+): AgentSessionState {
+  return { ...migrateSessionState(raw), rowSessionId }
+}
+
+/**
  * Store agent session state in Redis
  *
  * @param sessionId - The tracker session ID (Linear AgentSession ID or self-dispatched UUID)
@@ -184,6 +216,7 @@ export async function storeSessionState(
       ...state,
       trackerSessionId: sessionId,
       trackerProvider: state.trackerProvider ?? 'linear',
+      rowSessionId: sessionId,
       createdAt: now,
       updatedAt: now,
     }
@@ -200,6 +233,7 @@ export async function storeSessionState(
     ...state,
     trackerSessionId: sessionId,
     trackerProvider: state.trackerProvider ?? 'linear',
+    rowSessionId: sessionId,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -232,7 +266,7 @@ export async function getSessionState(
 
   const key = buildSessionKey(sessionId)
   const raw = await redisGet<AgentSessionState>(key)
-  const state = raw ? migrateSessionState(raw) : null
+  const state = raw ? hydrateSessionState(raw, sessionId) : null
 
   if (state) {
     log.debug('Retrieved session state', {
@@ -291,7 +325,8 @@ export async function updateProviderSessionId(
  */
 export async function updateSessionStatus(
   sessionId: string,
-  status: AgentSessionState['status']
+  status: AgentSessionState['status'],
+  options?: { stoppedReason?: string }
 ): Promise<boolean> {
   if (!isRedisConfigured()) {
     log.warn('Redis not configured, cannot update session status')
@@ -310,6 +345,7 @@ export async function updateSessionStatus(
   const updated: AgentSessionState = {
     ...existing,
     status,
+    ...(options?.stoppedReason ? { stoppedReason: options.stoppedReason } : {}),
     updatedAt: now,
   }
 
@@ -462,7 +498,9 @@ export async function getSessionStateByIssue(
 
   for (const key of keys) {
     const raw = await redisGet<AgentSessionState>(key)
-    const state = raw ? migrateSessionState(raw) : null
+    const state = raw
+      ? hydrateSessionState(raw, key.slice(SESSION_KEY_PREFIX.length))
+      : null
     if (state?.issueId === issueId) {
       // Prefer active sessions — return immediately if found
       if (activeStatuses.includes(state.status)) {
@@ -584,7 +622,7 @@ export async function getAllSessions(): Promise<AgentSessionState[]> {
     for (const key of keys) {
       const raw = await redisGet<AgentSessionState>(key)
       if (raw) {
-        sessions.push(migrateSessionState(raw))
+        sessions.push(hydrateSessionState(raw, key.slice(SESSION_KEY_PREFIX.length)))
       }
     }
 

@@ -33,7 +33,14 @@ function toPublicStatus(status: AgentSessionState['status']): PublicSessionStatu
 async function findSessionByPublicId(publicId: string): Promise<AgentSessionState | null> {
   const allSessions = await getAllSessions()
   for (const session of allSessions) {
-    if (hashSessionId(session.trackerSessionId) === publicId) {
+    // Match on the row's OWN id (falls back to trackerSessionId for rows
+    // that are their own tracker session) — same identity as sessions-list.
+    // Activities stay keyed by trackerSessionId: alias rows share the
+    // tracker session's activity stream.
+    if (
+      hashSessionId(session.rowSessionId ?? session.trackerSessionId) ===
+      publicId
+    ) {
       return session
     }
   }

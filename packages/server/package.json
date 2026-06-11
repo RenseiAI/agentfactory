@@ -1,6 +1,6 @@
 {
   "name": "@donmai/server",
-  "version": "0.9.0",
+  "version": "0.9.6",
   "type": "module",
   "description": "Webhook server and distributed worker pool for Donmai. Redis queues, issue locks, session management",
   "author": "Rensei AI (https://rensei.ai)",

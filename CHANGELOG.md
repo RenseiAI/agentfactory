@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- **Stranded per-dispatch session rows** — Orphan cleanup now terminal-marks per-dispatch Redis session rows (rows written under their own key whose stored `trackerSessionId` was patched to a shared tracker session) under their OWN key once the tracker-keyed session is terminal or missing. Previously every lifecycle write keyed off `trackerSessionId`, so such rows stranded as phantom queued/parked sessions forever and the zombie sweep re-queued the shared tracker session on every cleanup pass (infinite re-queue → pop → drop churn). Session reads now expose the row's own id as `rowSessionId`, and the public sessions API hashes it for the public session id so N rows aliasing one tracker session no longer render as N duplicates of the same id.
+
 ### Deprecations
 
 - **`af-arch` binary (`@donmai/cli`)** — Deprecated in favour of the native Go `donmai arch` command. The shim still runs but now emits a runtime deprecation notice on stderr; it will be removed in a future release. Use `donmai arch assess <pr-url>` instead — the `assess` subcommand, all flags, and the JSON output are preserved. See [`docs/migration-from-legacy-cli.md`](./docs/migration-from-legacy-cli.md) for the migration path.
