@@ -444,8 +444,8 @@ export class AppServerProcessManager {
     // Step 1: Send initialize request
     await this.request('initialize', {
       clientInfo: {
-        name: 'agentfactory',
-        title: 'AgentFactory Orchestrator',
+        name: 'donmai',
+        title: 'Donmai Orchestrator',
         version: '0.8.0',
       },
       capabilities: {
@@ -1265,7 +1265,7 @@ function buildBaseInstructions(config: AgentSpawnConfig): string | undefined {
 
   sections.push(`# Safety Rules
 
-You are running in an AgentFactory-managed worktree. Follow these rules strictly:
+You are running in a donmai-managed worktree. Follow these rules strictly:
 
 1. NEVER run: rm -rf / (or any rm of the filesystem root)
 2. NEVER run: git worktree remove, git worktree prune
@@ -1562,7 +1562,7 @@ class AppServerAgentHandle implements AgentHandle {
         const threadParams: Record<string, unknown> = {
           cwd: this.config.cwd,
           approvalPolicy: resolveApprovalPolicy(this.config),
-          serviceName: 'agentfactory',
+          serviceName: 'donmai',
         }
 
         // SUP-1746: Pass persistent system instructions via `baseInstructions` on thread/start.

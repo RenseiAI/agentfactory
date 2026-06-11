@@ -228,7 +228,7 @@ describe('registerAuditLogSubscriber', () => {
     expect(paths).toHaveLength(1)
     const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
     expect(paths[0]).toContain(today)
-    expect(paths[0]).toContain('.rensei/audit')
+    expect(paths[0]).toContain('.donmai/audit')
     expect(paths[0].endsWith('.ndjson')).toBe(true)
   })
 

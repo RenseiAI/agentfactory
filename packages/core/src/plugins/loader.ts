@@ -77,7 +77,7 @@ export interface PluginLoaderOptions {
 
   /**
    * The project workarea root. Used to discover project-local plugins in
-   * `.rensei/plugins/`. Defaults to `process.cwd()`.
+   * `.donmai/plugins/`. Defaults to `process.cwd()`.
    */
   projectRoot?: string
 
@@ -229,7 +229,7 @@ export class PluginLoader {
    *
    * Resolution order (015-plugin-spec.md §Discovery):
    * 1. Bundled — `<hostRoot>/plugins/`
-   * 2. Project-local — `<projectRoot>/.rensei/plugins/`
+   * 2. Project-local — `<projectRoot>/.donmai/plugins/`
    * 3. Configured registries — remote HTTP queries
    * 4. Programmatic — manifests pre-registered via registerPlugin()
    */
@@ -243,7 +243,7 @@ export class PluginLoader {
     }
 
     // 2. Project-local
-    const localDir = path.join(this.options.projectRoot, '.rensei', 'plugins')
+    const localDir = path.join(this.options.projectRoot, '.donmai', 'plugins')
     for (const f of discoverPluginFiles(localDir)) {
       results.push({ filePath: f, source: 'project-local' })
     }

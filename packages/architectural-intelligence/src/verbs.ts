@@ -113,7 +113,7 @@ export interface AssessChangeVerbInput {
 
   /**
    * Drift gate policy override.
-   * Defaults to RENSEI_DRIFT_GATE env or 'no-severity-high'.
+   * Defaults to DONMAI_DRIFT_GATE env or 'no-severity-high'.
    *   'none'             — never block
    *   'no-severity-high' — block on any high-severity deviation
    *   'zero-deviations'  — block on any deviation
@@ -171,7 +171,7 @@ export const ASSESS_CHANGE_VERB: VerbDeclaration = {
     'Run architectural drift detection on a PR or commit. ' +
     'Compares the change against established architectural patterns, conventions, ' +
     'and decisions. Returns a DriftReport. Threshold-based gating blocks PRs ' +
-    'per tenant policy (RENSEI_DRIFT_GATE or explicit gatePolicy input).',
+    'per tenant policy (DONMAI_DRIFT_GATE or explicit gatePolicy input).',
   kind: 'action',
   sideEffectClass: 'internal-only',
 }
@@ -266,7 +266,7 @@ export async function handleAssessChange(
   }
 
   // Resolve gate policy
-  const policyStr = input.gatePolicy ?? process.env['RENSEI_DRIFT_GATE']
+  const policyStr = input.gatePolicy ?? process.env['DONMAI_DRIFT_GATE']
   const gatePolicy = policyStr ? _parseGatePolicyString(policyStr) : undefined
 
   // Optionally fetch the PR diff

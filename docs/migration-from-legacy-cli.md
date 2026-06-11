@@ -46,7 +46,7 @@ These binaries handle utility and migration tasks. They are less frequently used
 | `af-add-dep` | `af add-dep` | Not yet ported | Safe dependency install in agent worktrees; tracking issue pending |
 | `af-sync-routes` | `af sync-routes` | Not yet ported | Next.js route-file generator from manifest; tracking issue pending |
 | `af-migrate-worktrees` | _(migration complete — retire after run)_ | Out of scope | One-shot migration from `.worktrees/` to sibling-dir layout; no Go port planned |
-| `af-migrate-config-to-kits` | _(migration complete — retire after run)_ | Out of scope | One-shot `.donmai/config.yaml` → `.rensei/kits/` migration; no Go port planned |
+| `af-migrate-config-to-kits` | _(migration complete — retire after run)_ | Out of scope | One-shot `.donmai/config.yaml` → `.donmai/kits/` migration; no Go port planned |
 | `agentfactory` (root binary) | `af` | Ported | Top-level dispatcher; the `agentfactory` name is the legacy alias |
 | `rensei-daemon` (from `@renseiai/daemon`) | `rensei daemon run` (and `af daemon run`) | Ported | Daemon runtime ported to Go. Single-binary OSS UX — no separate daemon binary. |
 
@@ -289,7 +289,7 @@ All environment variables used by the legacy CLI are honoured by `af`:
 | `WORKER_API_KEY` | `af worker` |
 | `WORKER_PROJECTS` | `af worker`, `af worker fleet` |
 | `ANTHROPIC_API_KEY` | `af arch` |
-| `RENSEI_DRIFT_GATE` | `af arch` |
+| `DONMAI_DRIFT_GATE` | `af arch` |
 | `VOYAGE_AI_API_KEY` | `af code` (optional — enables vector embeddings) |
 | `COHERE_API_KEY` | `af code` (optional — enables cross-encoder reranking) |
 | `GOVERNOR_PROJECTS` | `af governor` |

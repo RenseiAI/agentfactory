@@ -81,7 +81,7 @@ cleanup-sub-issues Options:
   --dry-run                     List issues with disposition recommendations (no changes)
   --apply                       Apply the recommended dispositions
   --tracking <id>               Post dry-run report as a comment on this issue ID
-  --agent-authors-config <path> Path to .rensei/known-agent-authors.json
+  --agent-authors-config <path> Path to .donmai/known-agent-authors.json
 
 Array Values:
   --labels accepts comma-separated: --labels "Bug,Feature"

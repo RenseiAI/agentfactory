@@ -341,7 +341,7 @@ describe('runMigration CLI', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('creates .rensei/kits/<project>.kit.toml for each projectPaths entry', async () => {
+  it('creates .donmai/kits/<project>.kit.toml for each projectPaths entry', async () => {
     const yaml = `
 apiVersion: v1
 kind: RepositoryConfig
@@ -358,7 +358,7 @@ projectPaths:
 
     await runMigration(['node', 'af-migrate-config-to-kits', '--repo-root', tmpDir])
 
-    const kitsDir = join(tmpDir, '.rensei', 'kits')
+    const kitsDir = join(tmpDir, '.donmai', 'kits')
     expect(existsSync(join(kitsDir, 'social.kit.toml'))).toBe(true)
     expect(existsSync(join(kitsDir, 'family-ios.kit.toml'))).toBe(true)
   })
@@ -378,7 +378,7 @@ projectPaths:
 
     await runMigration(['node', 'af-migrate-config-to-kits', '--repo-root', tmpDir])
 
-    const tomlPath = join(tmpDir, '.rensei', 'kits', 'backend.kit.toml')
+    const tomlPath = join(tmpDir, '.donmai', 'kits', 'backend.kit.toml')
     expect(existsSync(tomlPath)).toBe(true)
 
     const { readFileSync } = await import('fs')
@@ -403,7 +403,7 @@ projectPaths:
 
     await runMigration(['node', 'af-migrate-config-to-kits', '--repo-root', tmpDir, '--dry-run'])
 
-    const kitsDir = join(tmpDir, '.rensei', 'kits')
+    const kitsDir = join(tmpDir, '.donmai', 'kits')
     expect(existsSync(kitsDir)).toBe(false)
   })
 
@@ -417,7 +417,7 @@ projectPaths:
     writeRepoConfig(tmpDir, yaml)
 
     // Create the output directory and pre-existing file
-    const kitsDir = join(tmpDir, '.rensei', 'kits')
+    const kitsDir = join(tmpDir, '.donmai', 'kits')
     mkdirSync(kitsDir, { recursive: true })
     writeFileSync(join(kitsDir, 'social.kit.toml'), 'original content', 'utf-8')
 

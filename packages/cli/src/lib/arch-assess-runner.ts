@@ -44,7 +44,7 @@ export interface ArchAssessInput {
   repository?: string
   /** PR number within the repository. */
   prNumber?: number
-  /** Gate policy override. Falls back to RENSEI_DRIFT_GATE env. */
+  /** Gate policy override. Falls back to DONMAI_DRIFT_GATE env. */
   gatePolicy?: string
   /** Scope level for the baseline query. */
   scopeLevel?: 'project' | 'org' | 'tenant' | 'global'
@@ -114,7 +114,7 @@ export async function runArchAssess(input: ArchAssessInput): Promise<ArchAssessR
   // Resolve DB path
   const dbPath =
     input.dbPath ??
-    process.env['RENSEI_ARCH_DB'] ??
+    process.env['DONMAI_ARCH_DB'] ??
     join(input.cwd, '.agentfactory', 'arch-intelligence', 'db.sqlite')
 
   // Instantiate the SQLite implementation
@@ -130,7 +130,7 @@ export async function runArchAssess(input: ArchAssessInput): Promise<ArchAssessR
   } as { level: 'project' | 'org' | 'tenant' | 'global'; projectId?: string }
 
   // Resolve gate policy
-  const policyStr = input.gatePolicy ?? process.env['RENSEI_DRIFT_GATE']
+  const policyStr = input.gatePolicy ?? process.env['DONMAI_DRIFT_GATE']
   const gatePolicy: DriftGatePolicy = policyStr
     ? _parseGatePolicyString(policyStr)
     : resolveDriftGatePolicy()

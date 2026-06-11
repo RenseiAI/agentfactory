@@ -49,6 +49,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+      # Fail closed before anything reaches a public registry: no test
+      # artifacts, RENSEI_ env names, or private references (Linear IDs,
+      # private repo links) in the packed payload or publishable READMEs.
+      - name: Check publish surface
+        run: bash scripts/check-publish-surface.sh
+
       # Extract version from tag or workflow_dispatch input
       - name: Set version
         run: |

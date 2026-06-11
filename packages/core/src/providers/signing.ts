@@ -74,7 +74,7 @@ export type TrustMode = 'permissive' | 'signed-by-allowlist' | 'attested'
 
 export interface TrustOverride {
   mode: 'allowed-this-once'
-  /** Who is authorizing the override (email, operator id, or 'env:RENSEI_OPERATOR'). */
+  /** Who is authorizing the override (email, operator id, or 'env:DONMAI_OPERATOR'). */
   actor: string
   /** Human-readable reason for the override. */
   reason: string

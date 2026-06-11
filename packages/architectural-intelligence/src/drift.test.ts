@@ -10,7 +10,7 @@
  *   1. Known-divergent PR → DriftReport with expected deviations.
  *   2. Clean PR → empty DriftReport (no deviations).
  *   3. Threshold gating: zero-deviations, no-severity-high, max:N.
- *   4. resolveDriftGatePolicy reads RENSEI_DRIFT_GATE env.
+ *   4. resolveDriftGatePolicy reads DONMAI_DRIFT_GATE env.
  *   5. assessChange persists deviations via ai.contribute().
  *   6. SqliteArchitecturalIntelligence.assessWithAdapter() integration.
  *   7. Empty baseline → informational report (no crash).
@@ -371,32 +371,32 @@ describe('threshold gating', () => {
 
 describe('resolveDriftGatePolicy', () => {
   afterEach(() => {
-    delete process.env['RENSEI_DRIFT_GATE']
+    delete process.env['DONMAI_DRIFT_GATE']
   })
 
   it('explicit policy takes precedence over env', () => {
-    process.env['RENSEI_DRIFT_GATE'] = 'none'
+    process.env['DONMAI_DRIFT_GATE'] = 'none'
     expect(resolveDriftGatePolicy('zero-deviations')).toBe('zero-deviations')
   })
 
-  it('reads RENSEI_DRIFT_GATE env when no explicit policy', () => {
-    process.env['RENSEI_DRIFT_GATE'] = 'zero-deviations'
+  it('reads DONMAI_DRIFT_GATE env when no explicit policy', () => {
+    process.env['DONMAI_DRIFT_GATE'] = 'zero-deviations'
     expect(resolveDriftGatePolicy()).toBe('zero-deviations')
   })
 
   it("defaults to 'no-severity-high' when env is unset", () => {
-    delete process.env['RENSEI_DRIFT_GATE']
+    delete process.env['DONMAI_DRIFT_GATE']
     expect(resolveDriftGatePolicy()).toBe('no-severity-high')
   })
 
   it("parses 'max:3' into { maxCount: 3 }", () => {
-    process.env['RENSEI_DRIFT_GATE'] = 'max:3'
+    process.env['DONMAI_DRIFT_GATE'] = 'max:3'
     const policy = resolveDriftGatePolicy()
     expect(policy).toEqual({ maxCount: 3 })
   })
 
   it("parses 'max:0' into { maxCount: 0 }", () => {
-    process.env['RENSEI_DRIFT_GATE'] = 'max:0'
+    process.env['DONMAI_DRIFT_GATE'] = 'max:0'
     const policy = resolveDriftGatePolicy()
     expect(policy).toEqual({ maxCount: 0 })
   })

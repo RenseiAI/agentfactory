@@ -35,6 +35,8 @@
   },
   "files": [
     "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
     "tailwind.config.ts",
     "components.json",
     "README.md",

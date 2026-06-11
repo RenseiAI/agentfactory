@@ -33,7 +33,7 @@ export type FederationOrder = Array<
 /**
  * Default federation order per 005-kit-manifest-spec.md §Registry sources.
  *
- *   1. local       — .rensei/kits/*.kit.toml in the workarea (highest priority)
+ *   1. local       — .donmai/kits/*.kit.toml in the workarea (highest priority)
  *   2. bundled     — shipped with the OSS execution layer
  *   3. rensei      — registry.rensei.dev
  *   4. tessl       — registry.tessl.io

@@ -7,10 +7,18 @@ on:
     branches: [main]
   workflow_call:
 
+# Default-deny: every job gets a read-only GITHUB_TOKEN unless it
+# explicitly asks for more.
+permissions:
+  contents: read
+
 jobs:
   gitleaks:
     name: Secret Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # gitleaks-action posts PR comments on findings
     steps:
       - uses: actions/checkout@v6
         if: ${{ env.GITLEAKS_LICENSE != '' }}
@@ -146,6 +154,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+      # No test artifacts, RENSEI_ env names, or private references in
+      # anything `pnpm publish` would ship.
+      - name: Check publish surface
+        run: bash scripts/check-publish-surface.sh
 
   test:
     name: Test

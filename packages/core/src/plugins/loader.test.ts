@@ -735,8 +735,8 @@ describe('discoverManifestFiles', () => {
     expect(files.some((f) => f.filePath.includes('rensei-plugin.yaml'))).toBe(true)
   })
 
-  it('discovers *.plugin.yaml in project-local .rensei/plugins dir', () => {
-    const localDir = path.join(tmpDir, '.rensei', 'plugins')
+  it('discovers *.plugin.yaml in project-local .donmai/plugins dir', () => {
+    const localDir = path.join(tmpDir, '.donmai', 'plugins')
     fs.mkdirSync(localDir, { recursive: true })
     fs.writeFileSync(
       path.join(localDir, 'my-plugin.plugin.yaml'),
