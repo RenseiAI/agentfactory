@@ -77,7 +77,9 @@ async function toPublicSessionDetail(
   }
 
   return {
-    id: hashSessionId(session.trackerSessionId),
+    // Hash the row's OWN id so per-dispatch rows aliasing one tracker
+    // session keep distinct public identities (matches sessions-list)
+    id: hashSessionId(session.rowSessionId ?? session.trackerSessionId),
     identifier: session.issueIdentifier || 'Unknown',
     status: toPublicStatus(session.status, isParked),
     workType: session.workType || 'development',
@@ -111,7 +113,10 @@ async function findSessionByPublicId(
   const allSessions = await getAllSessions()
 
   for (const session of allSessions) {
-    if (hashSessionId(session.trackerSessionId) === publicId) {
+    if (
+      hashSessionId(session.rowSessionId ?? session.trackerSessionId) ===
+      publicId
+    ) {
       return session
     }
   }

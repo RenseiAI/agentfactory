@@ -12,16 +12,24 @@ vi.mock('./redis.js', () => ({
 import {
   storeSessionState,
   getSessionState,
+  getAllSessions,
   updateSessionStatus,
   updateProviderSessionId,
   deleteSessionState,
 } from './session-storage.js'
-import { isRedisConfigured, redisSet, redisGet, redisDel } from './redis.js'
+import {
+  isRedisConfigured,
+  redisSet,
+  redisGet,
+  redisDel,
+  redisKeys,
+} from './redis.js'
 
 const mockIsRedisConfigured = vi.mocked(isRedisConfigured)
 const mockRedisSet = vi.mocked(redisSet)
 const mockRedisGet = vi.mocked(redisGet)
 const mockRedisDel = vi.mocked(redisDel)
+const mockRedisKeys = vi.mocked(redisKeys)
 
 function makeSessionInput() {
   return {
@@ -129,8 +137,47 @@ describe('session-storage', () => {
 
       const result = await getSessionState('session-1')
 
-      expect(result).toEqual(stored)
+      // Read paths stamp the row's own id (derived from the key)
+      expect(result).toEqual({ ...stored, rowSessionId: 'session-1' })
       expect(mockRedisGet).toHaveBeenCalledWith('agent:session:session-1')
+    })
+
+    it('stamps rowSessionId with the requested id, even when the stored trackerSessionId differs', async () => {
+      // Per-dispatch rows: created under their own UUID key, then the stored
+      // trackerSessionId is patched to a shared tracker session
+      mockRedisGet.mockResolvedValue({
+        trackerSessionId: 'tracker-shared',
+        trackerProvider: 'linear',
+        issueId: 'issue-1',
+        providerSessionId: null,
+        worktreePath: '/tmp/worktree',
+        status: 'pending',
+        createdAt: 1000000,
+        updatedAt: 1000001,
+      })
+
+      const result = await getSessionState('dispatch-uuid-1')
+
+      expect(result!.rowSessionId).toBe('dispatch-uuid-1')
+      expect(result!.trackerSessionId).toBe('tracker-shared')
+    })
+
+    it('overwrites a stale persisted rowSessionId with the actual key', async () => {
+      mockRedisGet.mockResolvedValue({
+        trackerSessionId: 'tracker-shared',
+        trackerProvider: 'linear',
+        rowSessionId: 'stale-copy',
+        issueId: 'issue-1',
+        providerSessionId: null,
+        worktreePath: '/tmp/worktree',
+        status: 'pending',
+        createdAt: 1000000,
+        updatedAt: 1000001,
+      })
+
+      const result = await getSessionState('dispatch-uuid-1')
+
+      expect(result!.rowSessionId).toBe('dispatch-uuid-1')
     })
 
     it('migrates legacy linearSessionId field on read', async () => {
@@ -196,6 +243,65 @@ describe('session-storage', () => {
       // Verify updatedAt changed
       const storedArg = mockRedisSet.mock.calls[0]![1] as Record<string, unknown>
       expect(storedArg.updatedAt).not.toBe(existing.updatedAt)
+    })
+
+    it('persists stoppedReason when provided', async () => {
+      mockRedisGet.mockResolvedValue({
+        trackerSessionId: 'tracker-shared',
+        trackerProvider: 'linear',
+        issueId: 'issue-1',
+        providerSessionId: null,
+        worktreePath: '/tmp/worktree',
+        status: 'pending',
+        createdAt: 1000000,
+        updatedAt: 1000001,
+      })
+
+      const result = await updateSessionStatus('dispatch-uuid-1', 'stopped', {
+        stoppedReason: 'Stranded per-dispatch row',
+      })
+
+      expect(result).toBe(true)
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        'agent:session:dispatch-uuid-1',
+        expect.objectContaining({
+          status: 'stopped',
+          stoppedReason: 'Stranded per-dispatch row',
+        }),
+        86400
+      )
+    })
+  })
+
+  describe('getAllSessions', () => {
+    it('derives rowSessionId from each Redis key, even when trackerSessionId differs', async () => {
+      mockRedisKeys.mockResolvedValue([
+        'agent:session:dispatch-uuid-1',
+        'agent:session:tracker-shared',
+      ])
+      mockRedisGet.mockImplementation(async (key: string) => {
+        const base = {
+          trackerSessionId: 'tracker-shared',
+          trackerProvider: 'linear',
+          issueId: 'issue-1',
+          providerSessionId: null,
+          worktreePath: '/tmp/worktree',
+          status: 'pending',
+          createdAt: 1000000,
+        }
+        if (key === 'agent:session:dispatch-uuid-1') {
+          return { ...base, updatedAt: 1000002 }
+        }
+        return { ...base, updatedAt: 1000001 }
+      })
+
+      const sessions = await getAllSessions()
+
+      expect(sessions).toHaveLength(2)
+      // Sorted by updatedAt desc — the per-dispatch row first
+      expect(sessions[0]!.rowSessionId).toBe('dispatch-uuid-1')
+      expect(sessions[0]!.trackerSessionId).toBe('tracker-shared')
+      expect(sessions[1]!.rowSessionId).toBe('tracker-shared')
     })
   })
 
