@@ -1,7 +1,7 @@
 /**
  * Metrics subscriber — Prometheus-style counter/histogram/gauge emission.
  *
- * Architecture reference: rensei-architecture/002-provider-base-contract.md §Lifecycle hooks
+ * Architecture reference: donmai-architecture/002-provider-base-contract.md §Lifecycle hooks
  *
  * Design:
  * - Backend is pluggable: implement MetricsBackend and pass it in.

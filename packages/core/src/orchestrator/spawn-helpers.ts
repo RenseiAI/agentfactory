@@ -1,7 +1,7 @@
 /**
  * Spawn helpers — environment loading and legacy prompt generation
  *
- * Extracted from orchestrator.ts (REN-1284).
+ * Extracted from orchestrator.ts.
  *
  *   - loadSettingsEnv: reads .claude/settings.local.json for agent env vars
  *   - loadAppEnvFiles: loads .env.local / .env.test.local from monorepo apps
@@ -161,7 +161,7 @@ export function loadAppEnvFiles(
  * template for a given work type. For most work types, the TemplateRegistry
  * renders the prompt from YAML templates.
  *
- * @param identifier - Issue identifier (e.g., SUP-123)
+ * @param identifier - Issue identifier (e.g., ABC-123)
  * @param workType - Type of work being performed
  * @param options - Optional configuration
  * @param options.parentContext - Pre-built enriched prompt for parent issues.
@@ -461,14 +461,14 @@ STRUCTURED RESULT MARKER (REQUIRED):
       break
 
     case 'operational-scanner-vercel':
-      // PM agent (012 Archetype 6 — Vercel scanner). REN-1328.
-      // Live Vercel binding is mocked pending REN-1311 (RenseiVercelPlugin).
+      // PM agent (012 Archetype 6 — Vercel scanner)..
+      // Live Vercel binding is mocked pending a Vercel plugin.
       // The TemplateRegistry-based prompt is the canonical path; this legacy
       // function is a fallback for environments that haven't migrated to templates.
       basePrompt = `Run Vercel operational scan.
 
 WORKFLOW:
-1. Query Vercel deploy logs for the configured time window (mock source pending REN-1311).
+1. Query Vercel deploy logs for the configured time window (mock source pending).
 2. Cluster by failure type: deploy failures, function timeouts, cold-start regressions.
 3. Dedupe against existing Linear issues (search by vercel-deploy-id).
 4. For each new cluster: create a standalone bug-report issue with provenance tags.
@@ -484,7 +484,7 @@ STRUCTURED RESULT MARKER (REQUIRED):
       break
 
     case 'operational-scanner-audit':
-      // PM agent (012 Archetype 6 — Audit scanner). REN-1328.
+      // PM agent (012 Archetype 6 — Audit scanner)..
       // The TemplateRegistry-based prompt is the canonical path; this legacy
       // function is a fallback for environments that haven't migrated to templates.
       basePrompt = `Run audit-chain operational scan (006 Seam 6).
@@ -506,7 +506,7 @@ STRUCTURED RESULT MARKER (REQUIRED):
       break
 
     case 'operational-scanner-ci':
-      // PM agent (012 Archetype 6 — CI scanner). REN-1328.
+      // PM agent (012 Archetype 6 — CI scanner)..
       // The TemplateRegistry-based prompt is the canonical path; this legacy
       // function is a fallback for environments that haven't migrated to templates.
       basePrompt = `Run CI operational scan.

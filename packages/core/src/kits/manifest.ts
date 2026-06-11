@@ -7,7 +7,7 @@
  * mcp_servers, skills, agents, a2a_skills, intelligence_extractors,
  * workarea_config, hooks, toolchain_install), and composition ordering.
  *
- * Architecture reference: rensei-architecture/005-kit-manifest-spec.md
+ * Architecture reference: donmai-architecture/005-kit-manifest-spec.md
  *
  * TOML parsing: no @iarna/toml or smol-toml in the root package.json, so
  * this module ships a minimal TOML parser sufficient for the kit.toml schema.

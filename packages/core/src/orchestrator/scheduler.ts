@@ -2,7 +2,7 @@
  * Cross-provider sandbox scheduler
  *
  * Implements the scheduling algorithm from
- * rensei-architecture/004-sandbox-capability-matrix.md §"Scheduling algorithm"
+ * donmai-architecture/004-sandbox-capability-matrix.md §"Scheduling algorithm"
  *
  * Algorithm (pure function, no I/O):
  *  1. Filter by capability constraints from spec (region, os, arch, resources,

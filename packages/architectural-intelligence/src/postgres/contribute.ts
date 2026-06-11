@@ -8,7 +8,7 @@
  *   2. Materialize the observation into a typed `graph_nodes` row
  *      (pattern / convention / decision / deviation). This mirrors the
  *      sqlite impl's direct-materialization path — the full synthesis
- *      pipeline (REN-1317 clustering / dedup) will replace it later.
+ *      pipeline (clustering / dedup) will replace it later.
  *
  * Multi-tenant: writes always carry `(org_id, project_id)`; the SDK never
  * writes a row that another tenant could read.
@@ -114,7 +114,7 @@ export async function contributeObservation(
   )
 
   // Step 2 — Materialize into graph_nodes. One row per observation;
-  // future clustering (REN-1317) will dedupe synonyms.
+  // future clustering will dedupe synonyms.
   const nodeId = randomUUID()
   const { name, description, properties } = projectGraphNode(observation)
 

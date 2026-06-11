@@ -4,7 +4,7 @@
  * Re-exports the full Kit subsystem: manifest schema + parser, detection
  * runtime, and composition algorithm.
  *
- * Architecture reference: rensei-architecture/005-kit-manifest-spec.md
+ * Architecture reference: donmai-architecture/005-kit-manifest-spec.md
  */
 
 // Manifest types and parser

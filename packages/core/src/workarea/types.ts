@@ -37,7 +37,7 @@ export function err<E>(error: E): { ok: false; error: E } {
  *                       the underlying add call to check it out instead.
  * - `path-exists`     — the target directory already exists on disk.
  * - `protected-path`  — the path is the main repo root, inside
- *                       `rensei-architecture/`, or under `runs/`.
+ *                       `donmai-architecture/`, or under `runs/`.
  * - `git-error`       — git returned a non-zero exit code for another reason.
  */
 export type AddWorktreeError =
@@ -114,7 +114,7 @@ export interface CleanWorktreeValue {
  * Expected failure modes for cleanWorktree().
  *
  * - `not-found`       — path does not exist.
- * - `protected-path`  — path is main repo root, rensei-architecture, or runs/.
+ * - `protected-path`  — path is main repo root, donmai-architecture, or runs/.
  * - `invalid-worktree`— path exists but is not a valid git worktree.
  * - `git-error`       — git clean / checkout returned a non-zero exit code.
  */
@@ -127,7 +127,7 @@ export type CleanWorktreeError =
 export type CleanWorktreeResult = Result<CleanWorktreeValue, CleanWorktreeError>
 
 // ---------------------------------------------------------------------------
-// WorkareaProvider types (REN-1280)
+// WorkareaProvider types
 // ---------------------------------------------------------------------------
 
 import type { Provider, ProviderScope } from '../providers/base.js'

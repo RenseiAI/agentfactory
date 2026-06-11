@@ -20,6 +20,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PUBLISHED_PACKAGES=(linear architectural-intelligence core server dashboard mcp-server)
 
 TEST_ARTIFACT_RE='(^|/)__(tests|fixtures|mocks)__(/|$)|\.test\.(js|jsx|ts|tsx|mjs|cjs|d\.ts)(\.map)?$'
+PRIVATE_REF_RE='REN-[0-9]|REN2-[0-9]|SUP-[0-9]|rensei-architecture|rensei-ops|RenseiAI/rensei'
 
 fail=0
 
@@ -65,10 +66,22 @@ for dir in "${PUBLISHED_PACKAGES[@]}"; do
     echo "$branded" | sed "s/^/  $name: /"
     fail=1
   fi
+
+  private="$(
+    echo "$files" | while IFS= read -r f; do
+      [ -f "$pkgdir/$f" ] || continue
+      if grep -lqE "$PRIVATE_REF_RE" "$pkgdir/$f" 2>/dev/null; then echo "$f"; fi
+    done
+  )"
+  if [ -n "$private" ]; then
+    echo "::error::$name would publish private references (Linear IDs, private repo links):"
+    echo "$private" | sed "s/^/  $name: /"
+    fail=1
+  fi
 done
 
 # Private references in publishable READMEs (see CLAUDE.md "Publishing Hygiene").
-if grep -nE 'REN-[0-9]|REN2-[0-9]|SUP-[0-9]|rensei-architecture|rensei-ops|RenseiAI/rensei' "$ROOT"/packages/*/README.md; then
+if grep -nE "$PRIVATE_REF_RE" "$ROOT"/packages/*/README.md; then
   echo "::error::Private references found in packages/*/README.md — strip before publishing"
   fail=1
 fi

@@ -1,5 +1,5 @@
 /**
- * Scheduling Decision Audit Records (SUP-1291)
+ * Scheduling Decision Audit Records
  *
  * Stores and retrieves SchedulingDecision records for debugging purposes.
  * Each scheduling decision produced by the orchestrator can be persisted

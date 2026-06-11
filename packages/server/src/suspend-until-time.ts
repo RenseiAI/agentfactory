@@ -1,5 +1,5 @@
 /**
- * Suspend-Until-Time Sweeper — REN-1398 (Decision 4)
+ * Suspend-Until-Time Sweeper (Decision 4)
  *
  * Schedules a session to wake at a future Unix-ms timestamp.  Backed by a
  * Redis ZSET (`work:wake`) keyed by sessionId with score = wake-at; a 1Hz
@@ -8,10 +8,10 @@
  * moves the work item back into the active queue at the next sweep tick.
  *
  * Architecture references:
- *   - rensei-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
+ *   - donmai-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
  *     (commit 56f2bc6) — Decision 4 (suspend-until-time semantics; 1Hz
  *     sweeper; sub-second precision NOT supported).
- *   - REN-1397 — journal primitive (resume-after-wake reads the journal
+ *   - journal primitive (resume-after-wake reads the journal
  *     to skip steps already completed before suspension).
  *
  * Design contract:

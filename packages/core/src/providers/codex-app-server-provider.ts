@@ -82,7 +82,7 @@ function isNotification(msg: JsonRpcMessage): msg is JsonRpcNotification {
 }
 
 // ---------------------------------------------------------------------------
-// MCP Server Status (SUP-1744)
+// MCP Server Status
 // ---------------------------------------------------------------------------
 
 /** Status of a registered MCP server as reported by mcpServerStatus/list */
@@ -172,7 +172,7 @@ interface AppServerThread {
 }
 
 // ---------------------------------------------------------------------------
-// Codex model mapping (SUP-1749)
+// Codex model mapping
 // ---------------------------------------------------------------------------
 
 export const CODEX_MODEL_MAP: Record<string, string> = {
@@ -192,7 +192,7 @@ export function resolveCodexModel(config: AgentSpawnConfig): string {
 }
 
 // ---------------------------------------------------------------------------
-// Codex pricing and cost calculation (SUP-1750)
+// Codex pricing and cost calculation
 // ---------------------------------------------------------------------------
 
 /** Codex pricing per 1M tokens (USD). Update when pricing changes. */
@@ -220,7 +220,7 @@ export function calculateCostUsd(
 }
 
 // ---------------------------------------------------------------------------
-// App Server Process Manager (SUP-1755)
+// App Server Process Manager
 // ---------------------------------------------------------------------------
 
 /** Pending JSON-RPC request awaiting a response */
@@ -625,7 +625,7 @@ export class AppServerProcessManager {
     return this.process?.pid
   }
 
-  // ─── MCP Server Configuration (SUP-1744) ──────────────────────────
+  // ─── MCP Server Configuration ──────────────────────────
 
   /** Whether MCP servers have been configured on this process */
   private mcpConfigured = false
@@ -755,7 +755,7 @@ export class AppServerProcessManager {
 }
 
 // ---------------------------------------------------------------------------
-// Event Mapping — App Server notifications → AgentEvent (SUP-1738)
+// Event Mapping — App Server notifications → AgentEvent
 // ---------------------------------------------------------------------------
 
 export interface AppServerEventMapperState {
@@ -1037,7 +1037,7 @@ export function mapAppServerItemEvent(
       return []
 
     case 'mcpToolCall': {
-      // Normalize tool name to mcp__{server}__{tool} format (SUP-1745)
+      // Normalize tool name to mcp__{server}__{tool} format
       // This matches the convention used by the Claude provider for
       // in-process MCP tools, enabling consistent tool tracking.
       const mcpToolName = normalizeMcpToolName(item.server, item.tool)
@@ -1103,7 +1103,7 @@ export function mapAppServerItemEvent(
 }
 
 // ---------------------------------------------------------------------------
-// MCP tool name normalization (SUP-1745)
+// MCP tool name normalization
 // ---------------------------------------------------------------------------
 
 /**
@@ -1126,7 +1126,7 @@ export function normalizeMcpToolName(server?: string, tool?: string): string {
 // ---------------------------------------------------------------------------
 
 function resolveApprovalPolicy(config: AgentSpawnConfig): string {
-  // SUP-1747: Use 'on-request' for autonomous agents so all tool executions
+  // Use 'on-request' for autonomous agents so all tool executions
   // flow through the approval bridge for safety evaluation. The bridge
   // auto-approves safe commands and declines destructive patterns.
   // Codex v0.117+ uses kebab-case: 'on-request' | 'untrusted' | 'on-failure' | 'never'
@@ -1244,7 +1244,7 @@ export function resolveSandboxMode(config: AgentSpawnConfig): string | undefined
 }
 
 // ---------------------------------------------------------------------------
-// Base Instructions Builder (SUP-1746)
+// Base Instructions Builder
 // ---------------------------------------------------------------------------
 
 /**
@@ -1280,7 +1280,7 @@ You are running in a donmai-managed worktree. Follow these rules strictly:
 }
 
 // ---------------------------------------------------------------------------
-// AgentHandle for App Server threads (SUP-1737)
+// AgentHandle for App Server threads
 // ---------------------------------------------------------------------------
 
 class AppServerAgentHandle implements AgentHandle {
@@ -1325,10 +1325,10 @@ class AppServerAgentHandle implements AgentHandle {
     }
 
     if (this.activeTurnId) {
-      // Mid-turn injection: steer the active turn (SUP-1740)
+      // Mid-turn injection: steer the active turn
       await this.steerTurn(text)
     } else {
-      // Between-turn injection: start a new turn on the existing thread (SUP-1741)
+      // Between-turn injection: start a new turn on the existing thread
       await this.startNewTurn(text)
     }
   }
@@ -1358,7 +1358,7 @@ class AppServerAgentHandle implements AgentHandle {
   }
 
   /**
-   * Steer an active turn with additional user input (SUP-1740).
+   * Steer an active turn with additional user input.
    * Sends a `turn/steer` JSON-RPC request to inject a message mid-turn.
    */
   private async steerTurn(text: string): Promise<void> {
@@ -1373,7 +1373,7 @@ class AppServerAgentHandle implements AgentHandle {
   }
 
   /**
-   * Handle an approval request from the App Server (SUP-1747).
+   * Handle an approval request from the App Server.
    *
    * Evaluates the command or file change against deny patterns (ported from
    * Claude's `autonomousCanUseTool`) and template-level permissions, then
@@ -1494,7 +1494,7 @@ class AppServerAgentHandle implements AgentHandle {
   }
 
   /**
-   * Start a new turn on the existing thread with additional user input (SUP-1741).
+   * Start a new turn on the existing thread with additional user input.
    * Used for between-turn injection when no turn is currently active.
    */
   private async startNewTurn(text: string): Promise<void> {
@@ -1539,7 +1539,7 @@ class AppServerAgentHandle implements AgentHandle {
         this.config.onProcessSpawned?.(sharedPid)
       }
 
-      // Configure MCP servers if provided (SUP-1744)
+      // Configure MCP servers if provided
       // This registers stdio MCP tool servers (af-linear, af-code-intelligence)
       // with the Codex app-server so it can discover and invoke them.
       if (this.config.mcpStdioServers && this.config.mcpStdioServers.length > 0) {
@@ -1565,7 +1565,7 @@ class AppServerAgentHandle implements AgentHandle {
           serviceName: 'donmai',
         }
 
-        // SUP-1746: Pass persistent system instructions via `baseInstructions` on thread/start.
+        // Pass persistent system instructions via `baseInstructions` on thread/start.
         // Separates safety rules and project context from per-turn task input.
         const instructions = buildBaseInstructions(this.config)
         if (instructions) {
@@ -1689,7 +1689,7 @@ class AppServerAgentHandle implements AgentHandle {
         while (this.notificationQueue.length > 0) {
           const notification = this.notificationQueue.shift()!
 
-          // SUP-1747: Intercept approval requests before other processing.
+          // Intercept approval requests before other processing.
           // Codex sends approvals as server requests with methods like:
           //   item/commandExecution/requestApproval, item/fileChange/requestApproval,
           //   item/permissions/requestApproval, applyPatchApproval, execCommandApproval
@@ -1730,7 +1730,7 @@ class AppServerAgentHandle implements AgentHandle {
             continue
           }
 
-          // Track active turn ID for mid-turn steering (SUP-1740)
+          // Track active turn ID for mid-turn steering
           if (notification.method === 'turn/started') {
             const turn = notification.params?.turn as AppServerTurn | undefined
             if (turn?.id) {
@@ -1850,7 +1850,7 @@ class AppServerAgentHandle implements AgentHandle {
 }
 
 // ---------------------------------------------------------------------------
-// Provider (SUP-1731)
+// Provider
 // ---------------------------------------------------------------------------
 
 /**
@@ -1871,7 +1871,7 @@ export class CodexAppServerProvider implements AgentProvider {
     supportsCodeIntelligenceEnforcement: false,
     toolPermissionFormat: 'codex' as const,
     emitsSubagentEvents: false,
-    // REN-1245: app-server forwards `effort` to the Codex thread via
+    // app-server forwards `effort` to the Codex thread via
     // `turnParams.reasoningEffort` (see CodexAppServerThread.send).
     supportsReasoningEffort: true,
     humanLabel: 'Codex',

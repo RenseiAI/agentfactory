@@ -145,7 +145,7 @@ export class LinearAgentClient {
   }
 
   /**
-   * Fetch an issue by ID or identifier (e.g., "SUP-50")
+   * Fetch an issue by ID or identifier (e.g., "ABC-50")
    */
   async getIssue(issueIdOrIdentifier: string): Promise<Issue> {
     return this.withRetry(async () => {
@@ -588,7 +588,7 @@ export class LinearAgentClient {
    *
    * Uses a single raw GraphQL query instead of N+1 lazy-loaded SDK calls.
    *
-   * @param issueId - The issue ID or identifier (e.g., "SUP-123")
+   * @param issueId - The issue ID or identifier (e.g., "ABC-123")
    * @returns Relations result with both directions of relationships
    */
   async getIssueRelations(issueId: string): Promise<IssueRelationsResult> {
@@ -723,7 +723,7 @@ export class LinearAgentClient {
   /**
    * Fetch all child issues (sub-issues) of a parent issue
    *
-   * @param issueIdOrIdentifier - The parent issue ID or identifier (e.g., "SUP-100")
+   * @param issueIdOrIdentifier - The parent issue ID or identifier (e.g., "ABC-100")
    * @returns Array of child issues
    */
   async getSubIssues(issueIdOrIdentifier: string): Promise<Issue[]> {

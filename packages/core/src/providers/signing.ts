@@ -1,5 +1,5 @@
 /**
- * Provider Signing & Trust Verification Runtime — REN-1314
+ * Provider Signing & Trust Verification Runtime
  *
  * Implements the verification-side concerns for the provider signing contract:
  *
@@ -15,8 +15,8 @@
  *    'capability-mismatch' hook event via globalHookBus
  *
  * Architecture references:
- *   - rensei-architecture/002-provider-base-contract.md §Signing and trust
- *   - rensei-architecture/015-plugin-spec.md §Auth + trust
+ *   - donmai-architecture/002-provider-base-contract.md §Signing and trust
+ *   - donmai-architecture/015-plugin-spec.md §Auth + trust
  */
 
 import type {

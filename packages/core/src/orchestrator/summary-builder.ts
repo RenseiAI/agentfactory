@@ -117,7 +117,7 @@ export class SummaryBuilder {
 
   /**
    * Generate the context injection string from a summary + artifacts.
-   * Uses neutral framing to avoid "context anxiety" (from SUP-1186 research).
+   * Uses neutral framing to avoid "context anxiety" (from prior research).
    */
   toPromptSection(
     summary: StructuredSummary,

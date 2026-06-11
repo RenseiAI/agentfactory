@@ -224,8 +224,8 @@ describe('addWorktree / removeWorktreePath / cleanWorktree: error on protected p
     rmSync(wtRoot, { recursive: true, force: true })
   })
 
-  it('addWorktree rejects a path inside rensei-architecture/', () => {
-    const protected_ = resolve(tmpdir(), 'rensei-architecture', 'sub')
+  it('addWorktree rejects a path inside donmai-architecture/', () => {
+    const protected_ = resolve(tmpdir(), 'donmai-architecture', 'sub')
     const result = addWorktree(repo, 'some-branch', protected_)
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -248,16 +248,16 @@ describe('addWorktree / removeWorktreePath / cleanWorktree: error on protected p
     expect(result.error).toBe('protected-path')
   })
 
-  it('removeWorktreePath rejects a path inside rensei-architecture/', () => {
-    const protected_ = resolve(tmpdir(), 'rensei-architecture', 'sub')
+  it('removeWorktreePath rejects a path inside donmai-architecture/', () => {
+    const protected_ = resolve(tmpdir(), 'donmai-architecture', 'sub')
     const result = removeWorktreePath(protected_, repo)
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error).toBe('protected-path')
   })
 
-  it('cleanWorktree rejects a path inside rensei-architecture/', () => {
-    const protected_ = resolve(tmpdir(), 'rensei-architecture', 'sub')
+  it('cleanWorktree rejects a path inside donmai-architecture/', () => {
+    const protected_ = resolve(tmpdir(), 'donmai-architecture', 'sub')
     const result = cleanWorktree(protected_)
     expect(result.ok).toBe(false)
     if (result.ok) return

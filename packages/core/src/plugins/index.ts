@@ -3,7 +3,7 @@
  *
  * Re-exports all public types and functions from the plugin loader subsystem.
  *
- * Architecture reference: rensei-architecture/015-plugin-spec.md
+ * Architecture reference: donmai-architecture/015-plugin-spec.md
  */
 
 export type {
@@ -56,7 +56,7 @@ export {
   loadPluginFromFile,
 } from './loader.js'
 
-// Trusted issuer set (REN-1344)
+// Trusted issuer set
 export type {
   PluginTrustMode,
   TrustedIssuer,

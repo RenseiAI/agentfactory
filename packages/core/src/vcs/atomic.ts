@@ -1,7 +1,7 @@
 /**
  * AtomicVCSProvider — CLI shell-out adapter for Atomic VCS
  *
- * Architecture reference: rensei-architecture/008-version-control-providers.md
+ * Architecture reference: donmai-architecture/008-version-control-providers.md
  *
  * Atomic is a Pijul-derived patch-theory VCS with token-granularity auto-merge
  * and first-class Ed25519 agent attestation. This adapter shells out to the
@@ -339,7 +339,7 @@ export class AtomicVCSProvider implements VersionControlProvider {
     const err = new Error(
       `AtomicVCSProvider does not support openProposal — hasPullRequests is false. ` +
       `Review via Slack channel or Linear comment thread until Atomic ships a proposal concept. ` +
-      `See rensei-architecture/008-version-control-providers.md for details.`,
+      `See donmai-architecture/008-version-control-providers.md for details.`,
     )
     ;(err as Error & { result: OpenProposalResult }).result = result
     throw err

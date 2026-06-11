@@ -1,21 +1,21 @@
 /**
- * Session Event Bus — REN-1399
+ * Session Event Bus
  *
  * Typed pub/sub for runtime session lifecycle events that the platform
  * mirror layer (agent_sessions.lastStepHeartbeat) and observability
  * subscribers consume.  Sibling of the per-step journal-event bus
- * shipped by REN-1397, scoped to whole-session signals — heartbeats and
- * (future) cancel/recovery events from REN-1398.
+ * shipped by earlier work, scoped to whole-session signals — heartbeats and
+ * (future) cancel/recovery events from earlier work.
  *
  * Architecture references:
- *   - rensei-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
+ *   - donmai-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
  *     (commit 56f2bc6) — Decision 5 (heartbeat cadence), Decision 6
  *     (tenant-scoping JWT path), Decision 7 (hook event taxonomy lives in
  *     agentfactory-server).
- *   - REN-1313 — Layer 6 hook bus (the pattern this module implements
+ *   - Layer 6 hook bus (the pattern this module implements
  *     for session-scoped events).
  *
- * Design contract (mirrors the REN-1313 contract):
+ * Design contract (mirrors the hook-bus contract):
  *   - Subscriber crashes are isolated per handler (try/catch + console.error).
  *     One bad subscriber MUST NOT break the others.
  *   - Filter on `kind` so the platform mirror can attach only to

@@ -2,7 +2,7 @@
  * InstrumentedProvider<F> — base class that wires hook-event emission into
  * every Provider<F> lifecycle method.
  *
- * Architecture reference: rensei-architecture/002-provider-base-contract.md §Lifecycle hooks
+ * Architecture reference: donmai-architecture/002-provider-base-contract.md §Lifecycle hooks
  *
  * Usage:
  *   class MySandboxProvider extends InstrumentedProvider<'sandbox'> {
@@ -17,7 +17,7 @@
  *
  * NOTE: The public Provider<F> interface from base.ts is NOT modified.
  * This class is an optional convenience base that implementations can extend.
- * The hook event contract from base.ts is stable (REN-1279).
+ * The hook event contract from base.ts is stable.
  */
 
 import type {

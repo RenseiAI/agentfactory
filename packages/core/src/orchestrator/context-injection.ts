@@ -1,7 +1,7 @@
 /**
  * Context Injection — Architectural Intelligence retrieval at session start
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Active context injection at session start"
  *
  * This is the Day-1-vs-Day-40 closure mechanic. The orchestrator calls
@@ -17,7 +17,7 @@
  * Session-end flush:
  *   `flushSessionObservations()` is called when a session terminates with
  *   WORK_RESULT:passed. A stub extractor returns [] for now; full extraction
- *   is REN-1324.
+ *   is.
  */
 
 import type {
@@ -282,7 +282,7 @@ export interface SessionFlushInput {
  * Flush new observations from a completed session into Architectural Intelligence.
  *
  * Called when a session terminates with WORK_RESULT:passed. The extractor is
- * a stub returning [] for now — full extraction is REN-1324.
+ * a stub returning [] for now — full extraction is.
  *
  * Errors are swallowed; the flush is best-effort and must not block session cleanup.
  */
@@ -327,9 +327,9 @@ export async function flushSessionObservations(
  * Stub observation extractor.
  *
  * Returns an empty array. Full extraction (parsing session diffs for new
- * patterns, conventions, decisions) is REN-1324.
+ * patterns, conventions, decisions) is.
  */
 export function extractObservationsStub(_input: SessionFlushInput): ArchObservation[] {
-  // REN-1324: extract observations from session diff
+  // extract observations from session diff
   return []
 }

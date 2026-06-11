@@ -231,9 +231,9 @@ const DEFAULT_CONFIG: Required<Omit<OrchestratorConfig, 'linearApiKey' | 'projec
   maxSessionTimeoutMs: DEFAULT_MAX_SESSION_TIMEOUT_MS,
 }
 
-// loadSettingsEnv, loadAppEnvFiles, generatePromptForWorkType imported from spawn-helpers.ts above (REN-1284)
+// loadSettingsEnv, loadAppEnvFiles, generatePromptForWorkType imported from spawn-helpers.ts above
 
-// Re-exported from workarea/git-worktree.ts (REN-1284 decomposition)
+// Re-exported from workarea/git-worktree.ts (decomposition)
 // Keep identical signatures here so consumers don't break.
 export {
   findRepoRoot,
@@ -241,14 +241,14 @@ export {
   resolveWorktreePath,
 } from '../workarea/git-worktree.js'
 
-// Re-exported from workarea/git-worktree.ts (REN-1284 decomposition)
+// Re-exported from workarea/git-worktree.ts (decomposition)
 export type { IncompleteWorkCheck, PushedWorkCheck } from '../workarea/git-worktree.js'
 export {
   checkForIncompleteWork,
   checkForPushedWorkWithoutPR,
 } from '../workarea/git-worktree.js'
 
-// Re-exported from dispatcher.ts (REN-1284 decomposition)
+// Re-exported from dispatcher.ts (decomposition)
 export {
   mergeMentionContext,
   shouldDeferAcceptanceTransition,
@@ -256,7 +256,7 @@ export {
   isGrepGlobShellCommand,
 } from './dispatcher.js'
 
-// Re-exported from workarea/git-worktree.ts and dispatcher.ts (REN-1284 decomposition)
+// Re-exported from workarea/git-worktree.ts and dispatcher.ts (decomposition)
 export { getWorktreeIdentifier } from '../workarea/git-worktree.js'
 export { detectWorkType } from './dispatcher.js'
 
@@ -332,7 +332,7 @@ export class AgentOrchestrator {
   /** @internal */ mergeQueueAdapter?: import('../merge-queue/types.js').MergeQueueAdapter
   // Git repository root for running git commands (resolved from worktreePath or cwd)
   /** @internal */ readonly gitRoot: string
-  // Architectural Intelligence for session-start context injection (REN-1316)
+  // Architectural Intelligence for session-start context injection
   /** @internal */ readonly contextInjectionConfig: ContextInjectionConfig
 
   constructor(config: OrchestratorConfig = {}, events: OrchestratorEvents = {}) {
@@ -376,7 +376,7 @@ export class AgentOrchestrator {
       validateGitRemote(this.config.repository, this.gitRoot)
     }
 
-    // Initialize Architectural Intelligence context injection config (REN-1316)
+    // Initialize Architectural Intelligence context injection config
     this.contextInjectionConfig = {
       architecturalIntelligence: config.architecturalIntelligence,
       maxTokens: config.architecturalContextMaxTokens,
@@ -695,7 +695,7 @@ export class AgentOrchestrator {
   }
 
   // Worktree lifecycle helpers \u2014 delegated to ../workarea/git-worktree.ts
-  // (REN-1342 phase-2 decomposition).  These thin wrappers keep the existing
+  // (phase-2 decomposition).  These thin wrappers keep the existing
   // call surface inside this file while the canonical logic lives in workarea.
 
   /** @internal */ validateWorktree(worktreePath: string): { valid: boolean; reason?: string } {
@@ -741,9 +741,9 @@ export class AgentOrchestrator {
 
   /**
    * Create a git worktree for an issue with work type suffix.
-   * Delegates to workarea/git-worktree.ts (REN-1342 phase-2 decomposition).
+   * Delegates to workarea/git-worktree.ts (phase-2 decomposition).
    *
-   * @param issueIdentifier - Issue identifier (e.g., "SUP-294")
+   * @param issueIdentifier - Issue identifier (e.g., "ABC-294")
    * @param workType - Type of work being performed
    * @returns Object containing worktreePath and worktreeIdentifier
    */
@@ -778,9 +778,9 @@ export class AgentOrchestrator {
 
   /**
    * Clean up a git worktree.
-   * Delegates to workarea/git-worktree.ts (REN-1342 phase-2 decomposition).
+   * Delegates to workarea/git-worktree.ts (phase-2 decomposition).
    *
-   * @param worktreeIdentifier - Worktree identifier with work type suffix (e.g., "SUP-294-QA")
+   * @param worktreeIdentifier - Worktree identifier with work type suffix (e.g., "ABC-294-QA")
    */
   removeWorktree(worktreeIdentifier: string, deleteBranchName?: string): void {
     workareaRemoveWorktree(worktreeIdentifier, this.config.worktreePath, this.gitRoot, deleteBranchName)
@@ -889,7 +889,7 @@ ORCHESTRATOR_INSTALL=1 exec ${addCmd} "\$@"
 
   /**
    * Link dependencies from the main repo into a worktree via symlinks.
-   * Delegates to workarea/dep-linker.ts (REN-1342 phase-2 decomposition).
+   * Delegates to workarea/dep-linker.ts (phase-2 decomposition).
    */
   linkDependencies(worktreePath: string, identifier: string): void {
     workareaLinkDependencies(worktreePath, identifier, this.packageManager ?? 'pnpm', this.gitRoot)
@@ -897,7 +897,7 @@ ORCHESTRATOR_INSTALL=1 exec ${addCmd} "\$@"
 
   /**
    * Sync dependencies between worktree and main repo before linking.
-   * Delegates to workarea/dep-linker.ts (REN-1342 phase-2 decomposition).
+   * Delegates to workarea/dep-linker.ts (phase-2 decomposition).
    */
   syncDependencies(worktreePath: string, identifier: string): void {
     workareaSyncDependencies(worktreePath, identifier, this.packageManager ?? 'pnpm', this.gitRoot)
@@ -1014,12 +1014,12 @@ ORCHESTRATOR_INSTALL=1 exec ${addCmd} "\$@"
     return { provider, providerName: name, source }
   }
 
-  /** @internal Body lives in agent-spawner.ts (REN-1342). */
+  /** @internal Body lives in agent-spawner.ts. */
   spawnAgent(options: SpawnAgentOptions): AgentProcess {
     return spawnAgentImpl.call(this, options)
   }
 
-  /** @internal Event-stream loop. Body lives in event-processor.ts (REN-1342). */
+  /** @internal Event-stream loop. Body lives in event-processor.ts. */
   async processEventStream(
     issueId: string,
     identifier: string,
@@ -1031,7 +1031,7 @@ ORCHESTRATOR_INSTALL=1 exec ${addCmd} "\$@"
     return processEventStreamImpl.call(this, issueId, identifier, sessionId, handle, emitter, agent)
   }
 
-  /** @internal Per-event handler. Body lives in event-processor.ts (REN-1342). */
+  /** @internal Per-event handler. Body lives in event-processor.ts. */
   async handleAgentEvent(
     issueId: string,
     sessionId: string | undefined,
@@ -1416,7 +1416,7 @@ ORCHESTRATOR_INSTALL=1 exec ${addCmd} "\$@"
     return result
   }
 
-  /** @internal Body lives in agent-spawner.ts (REN-1342). */
+  /** @internal Body lives in agent-spawner.ts. */
   async spawnAgentForIssue(
     issueIdOrIdentifier: string,
     sessionId?: string,
@@ -1772,17 +1772,17 @@ ORCHESTRATOR_INSTALL=1 exec ${addCmd} "\$@"
     }
   }
 
-  /** @internal Body lives in agent-spawner.ts (REN-1342). */
+  /** @internal Body lives in agent-spawner.ts. */
   async spawnAgentWithResume(options: SpawnAgentWithResumeOptions): Promise<AgentProcess> {
     return spawnAgentWithResumeImpl.call(this, options)
   }
 
-  /** @internal Body lives in agent-spawner.ts (REN-1342). */
+  /** @internal Body lives in agent-spawner.ts. */
   async attemptSessionSteering(agent: AgentProcess, log: Logger | undefined): Promise<void> {
     return attemptSessionSteeringImpl.call(this, agent, log)
   }
 
-  /** @internal Body lives in agent-spawner.ts (REN-1342). */
+  /** @internal Body lives in agent-spawner.ts. */
   createResumeWithFallbackHandle(
     spawnProvider: AgentProvider,
     providerSessionId: string,

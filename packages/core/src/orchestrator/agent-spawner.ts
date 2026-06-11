@@ -1,7 +1,7 @@
 /**
  * Agent spawner — agent spawn lifecycle (synchronous spawn + async with-resume)
  *
- * Extracted from orchestrator.ts (REN-1342 phase-2 decomposition).
+ * Extracted from orchestrator.ts (phase-2 decomposition).
  * The functions here run with `this` bound to the AgentOrchestrator instance.
  */
 
@@ -150,7 +150,7 @@ export function spawnAgent(
   // mergeMentionContext() for the merge semantics.
   const mergedMentionContext = mergeMentionContext(mentionContext, customPrompt)
 
-  // --- REN-1316: Use pre-built architectural context ---
+  // --- Use pre-built architectural context ---
   // The architectural context is pre-built by async callers (spawnAgentForIssue,
   // spawnAgentWithResume) via buildArchitecturalContext() before calling
   // spawnAgent(). This keeps spawnAgent() synchronous.
@@ -386,7 +386,7 @@ export function spawnAgent(
 
   // Set Claude Code Task List ID for intra-issue task coordination
   // This enables Tasks to persist across crashes and be shared between subagents
-  // Format: {issueIdentifier}-{WORKTYPE} (e.g., "SUP-123-DEV")
+  // Format: {issueIdentifier}-{WORKTYPE} (e.g., "ABC-123-DEV")
   env.CLAUDE_CODE_TASK_LIST_ID = worktreeIdentifier ?? `${identifier}-${WORK_TYPE_SUFFIX[workType]}`
 
   // Set team name so agents can use `rensei linear create-issue` without --team
@@ -466,7 +466,7 @@ export function spawnAgent(
     ? systemPromptAppendSections.join('\n\n')
     : undefined
 
-  // REN-1245: gate the per-step reasoning-effort hint on the provider's
+  // gate the per-step reasoning-effort hint on the provider's
   // capabilities.supportsReasoningEffort flag. Drops + emits a Layer 6
   // capability-mismatch warning when the provider can't honor it, so the
   // dispatch never silently ignores cost-control hints.
@@ -525,7 +525,7 @@ export function spawnAgent(
  * - If a worktree exists with valid state and stale heartbeat, triggers recovery
  * - If a worktree exists with fresh heartbeat (agent alive), throws error to prevent duplicates
  *
- * @param issueIdOrIdentifier - Issue ID or identifier (e.g., SUP-123)
+ * @param issueIdOrIdentifier - Issue ID or identifier (e.g., ABC-123)
  * @param sessionId - Optional Linear session ID
  * @param workType - Optional work type (auto-detected from issue status if not provided)
  * @param prompt - Optional custom prompt override
@@ -732,7 +732,7 @@ export async function spawnAgentForIssue(
   // This ensures LINEAR_SESSION_ID is always set, triggering headless operation
   const effectiveSessionId = sessionId ?? randomUUID()
 
-  // --- REN-1316: Pre-build architectural context (async, before synchronous spawnAgent) ---
+  // --- Pre-build architectural context (async, before synchronous spawnAgent) ---
   const archContextLog = createLogger({ issueIdentifier: identifier })
   const architecturalContext = await buildArchitecturalContext(
     {
@@ -1057,7 +1057,7 @@ export async function spawnAgentWithResume(
     ? systemPromptAppendSections.join('\n\n')
     : undefined
 
-  // REN-1245: gate per-step reasoning-effort hint on provider capability.
+  // gate per-step reasoning-effort hint on provider capability.
   // Same drop-and-warn behaviour as the fresh-spawn path so resume sessions
   // can't sneak through with an effort hint a provider would silently ignore.
   const effortDecision = applyReasoningEffort({

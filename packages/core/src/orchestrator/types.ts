@@ -134,7 +134,7 @@ export interface OrchestratorConfig {
    */
   deployProvider?: DeployProvider
   /**
-   * Architectural Intelligence instance for session-start context injection (REN-1316).
+   * Architectural Intelligence instance for session-start context injection.
    * When provided, the orchestrator queries it at session start and injects the returned
    * ArchView into the `architecturalContext` template variable.
    * When omitted, architectural context injection is skipped gracefully.
@@ -165,7 +165,7 @@ export interface OrchestratorIssue {
 export interface AgentProcess {
   issueId: string
   identifier: string
-  /** Worktree identifier includes work type suffix (e.g., "SUP-294-QA"). Undefined for non-code work types. */
+  /** Worktree identifier includes work type suffix (e.g., "ABC-294-QA"). Undefined for non-code work types. */
   worktreeIdentifier?: string
   sessionId?: string
   /** Provider CLI session ID for resuming sessions with --resume */
@@ -204,7 +204,7 @@ export interface AgentProcess {
    * True when the orchestrator's post-acceptance auto-enqueue successfully
    * handed the PR to the local merge queue. Feeds the acceptance completion
    * contract's `pr_merged_or_enqueued` check so a "passed" acceptance with
-   * an unmerged, unqueued PR is treated as incomplete (REN-1153 regression).
+   * an unmerged, unqueued PR is treated as incomplete (regression).
    */
   prEnqueuedForMerge?: boolean
 }
@@ -226,7 +226,7 @@ export interface OrchestratorEvents {
 export interface SpawnAgentOptions {
   issueId: string
   identifier: string
-  /** Worktree identifier with work type suffix (e.g., "SUP-294-QA"). Undefined for non-code work types. */
+  /** Worktree identifier with work type suffix (e.g., "ABC-294-QA"). Undefined for non-code work types. */
   worktreeIdentifier?: string
   sessionId?: string
   /** Worktree path. Undefined for non-code work types (research, backlog-creation). */
@@ -250,7 +250,7 @@ export interface SpawnAgentOptions {
   /** Sub-agent model override from platform dispatch (QueuedWork.subAgentModel) */
   dispatchSubAgentModel?: string
   /**
-   * Pre-built architectural context section (REN-1316).
+   * Pre-built architectural context section.
    * Built by callers (spawnAgentForIssue, spawnAgentWithResume) via buildArchitecturalContext()
    * before calling spawnAgent, so the synchronous spawnAgent() can use it without awaiting.
    */
@@ -298,7 +298,7 @@ export interface InjectMessageResult {
 export interface SpawnAgentWithResumeOptions {
   issueId: string
   identifier: string
-  /** Worktree identifier with work type suffix (e.g., "SUP-294-QA"). Undefined for non-code work types. */
+  /** Worktree identifier with work type suffix (e.g., "ABC-294-QA"). Undefined for non-code work types. */
   worktreeIdentifier?: string
   sessionId: string
   /** Worktree path. Undefined for non-code work types (research, backlog-creation). */

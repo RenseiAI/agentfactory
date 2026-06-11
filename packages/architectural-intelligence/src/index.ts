@@ -1,16 +1,16 @@
 /**
  * @donmai/architectural-intelligence — public API
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §Architectural Intelligence
  *
- * Package skeleton (REN-1315). Ships:
+ * Package skeleton. Ships:
  *   - Full type vocabulary (types.ts)
  *   - ArchitecturalIntelligence interface (types.ts)
  *   - Single-tenant local implementation: SqliteArchitecturalIntelligence
- *   - Multi-tenant SaaS stub: PostgresArchitecturalIntelligence (throws; see REN-1322)
+ *   - Multi-tenant SaaS stub: PostgresArchitecturalIntelligence (throws; see)
  *
- * Observation pipeline (REN-1324). Ships:
+ * Observation pipeline. Ships:
  *   - runObservationPass     — main pipeline entry point (pipeline.ts)
  *   - attachPipelineSubscribers — hook bus integration (pipeline.ts)
  *   - PrDiff / readDiffObservations — VCS diff reader (diff-reader.ts)
@@ -18,14 +18,14 @@
  *   - isAuthoredDoc / makeAuthoredObservation — authored intent helpers
  *   - createTestBus          — in-package test hook bus
  *
- * Synthesis prompts (REN-1325). Ships:
+ * Synthesis prompts. Ships:
  *   - promptRegistry / currentPrompt / versionedPrompt — versioned prompt registry
  *   - v1 prompts: pattern-extraction, convention-identification,
  *                 decision-recording, deviation-detection
  *   - evaluatePrompt / createStubAdapter / createFixedAdapter — eval rubric harness
  *   - compareABPrompts / formatABReport — A/B testing harness
  *
- * Drift detection (REN-1326). Ships:
+ * Drift detection. Ships:
  *   - assessChange           — core drift detection function (drift.ts)
  *   - DriftGatePolicy / resolveDriftGatePolicy / evaluateGate — threshold gating
  *   - AssessInput            — input type for assessChange
@@ -35,7 +35,7 @@
  *   - AssessChangeVerbInput / AssessChangeVerbOutput — verb I/O schemas
  *
  * Not yet shipped (separate issues):
- *   - MCP tool exposure (REN-1323)
+ *   - MCP tool exposure
  */
 
 // Types + interface
@@ -78,7 +78,7 @@ export type {
   TransactionRunner,
 } from './postgres/index.js'
 
-// Observation pipeline (REN-1324)
+// Observation pipeline
 export {
   runObservationPass,
   attachPipelineSubscribers,
@@ -98,15 +98,15 @@ export type {
   MemoryObservationKind,
 } from './pipeline.js'
 
-// VCS diff reader (REN-1324)
+// VCS diff reader
 export { readDiffObservations } from './diff-reader.js'
 export type { PrDiff, PrFileDiff, DiffReaderConfig } from './diff-reader.js'
 
-// Cluster + dedupe (REN-1324)
+// Cluster + dedupe
 export { clusterObservations, effectiveConfidence, _jaccardSimilarity } from './cluster.js'
 export type { ClusterConfig, ObservationWithTimestamp, ClusterResult } from './cluster.js'
 
-// Synthesis prompts (REN-1325)
+// Synthesis prompts
 export {
   promptRegistry,
   currentPrompt,
@@ -132,11 +132,11 @@ export type {
   BaselineEntry,
 } from './prompts/index.js'
 
-// Eval rubric harness (REN-1325)
+// Eval rubric harness
 export { evaluatePrompt, createStubAdapter, createFixedAdapter } from './eval.js'
 export type { ModelAdapter, EvalScore, EvalConfig } from './eval.js'
 
-// A/B test harness (REN-1325)
+// A/B test harness
 export { compareABPrompts, formatABReport } from './ab-test.js'
 export type {
   ABRunResult,
@@ -145,11 +145,11 @@ export type {
   ABTestConfig,
 } from './ab-test.js'
 
-// Drift detection (REN-1326)
+// Drift detection
 export { assessChange, resolveDriftGatePolicy, evaluateGate } from './drift.js'
 export type { DriftGatePolicy, AssessInput } from './drift.js'
 
-// Workflow verb registration (REN-1326)
+// Workflow verb registration
 export {
   registerArchitectureVerbs,
   handleAssessChange,

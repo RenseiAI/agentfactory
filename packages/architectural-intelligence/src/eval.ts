@@ -1,10 +1,10 @@
 /**
  * Architectural Intelligence — Eval Rubric Harness
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Architectural Intelligence" — Synthesis prompts
  *
- * REN-1325: Evaluation harness for synthesis prompt quality.
+ * Evaluation harness for synthesis prompt quality.
  *
  * evaluatePrompt(prompt, fixtureInputs, goldenOutputs) returns a scoring
  * breakdown covering:

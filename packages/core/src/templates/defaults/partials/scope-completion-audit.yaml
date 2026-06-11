@@ -32,7 +32,7 @@ content: |
   and "the function exists and has tests" is not the same as "the
   acceptance criterion is satisfied".
 
-  Real failure (REN-1165, April 2026): a coordinator delivered three new
+  Real failure (April 2026): a coordinator delivered three new
   libraries — `skill-matcher.ts`, `mab-selector.ts`, `load-aware-router.ts`
   — each with 23–27 passing tests. The parent acceptance criterion was
   "inbound work routed to the best available agent". QA passed. The work

@@ -82,7 +82,7 @@ export interface QueuedWork {
   /** Model override for Task sub-agents spawned by coordinators (e.g., 'claude-sonnet-4-6') */
   subAgentModel?: string
   /**
-   * Tenant envelope injected at enqueue time (REN-1399 / ADR Decision 6).
+   * Tenant envelope injected at enqueue time (/ ADR Decision 6).
    * Workers re-verify the JWT on consume and reject jobs whose `org` claim
    * does not match their registration.  Optional during the rollout window —
    * deployments without a configured trust anchor leave this undefined and

@@ -8,7 +8,7 @@ import type { ToolPermission, ToolPermissionAdapter } from './types.js'
 import type { AgentProviderName, ToolPermissionFormat } from '../providers/types.js'
 
 // ---------------------------------------------------------------------------
-// Codex Permission Config (SUP-1748)
+// Codex Permission Config
 // ---------------------------------------------------------------------------
 
 /**
@@ -82,7 +82,7 @@ export class CodexToolPermissionAdapter implements ToolPermissionAdapter {
   }
 
   /**
-   * Build a structured permission config for the Codex approval bridge (SUP-1748).
+   * Build a structured permission config for the Codex approval bridge.
    *
    * Translates abstract `tools.allow` and `tools.disallow` from templates
    * into regex patterns consumed by `evaluateCommandApproval()` and

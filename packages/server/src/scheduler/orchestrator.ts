@@ -1,7 +1,7 @@
 /**
  * Scheduling Orchestrator
  *
- * Wires together the filter pipeline (SUP-1282) and score pipeline (SUP-1289)
+ * Wires together the filter pipeline and score pipeline
  * into a single scheduling pass. For each work item in priority order:
  *
  *   1. Run filter pipeline -> feasible worker set
@@ -38,7 +38,7 @@ export interface ScheduleRequest {
 export interface ScheduleResult {
   assignments: WorkAssignment[]
   unschedulable: UnschedulableWork[]
-  /** Audit records — one per work item (for SUP-1291 to consume) */
+  /** Audit records — one per work item (for a follow-up consumer) */
   decisions: SchedulingDecision[]
 }
 
@@ -57,7 +57,7 @@ export interface UnschedulableWork {
 
 /**
  * Audit record for each scheduling decision.
- * SUP-1291 will extend this for persistence / metrics.
+ * A follow-up will extend this for persistence / metrics.
  */
 export interface SchedulingDecision {
   workSessionId: string

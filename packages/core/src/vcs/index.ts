@@ -1,7 +1,7 @@
 /**
  * VCS module — VersionControlProvider abstraction + GitHub + Atomic adapters
  *
- * Architecture reference: rensei-architecture/008-version-control-providers.md
+ * Architecture reference: donmai-architecture/008-version-control-providers.md
  */
 
 export type {

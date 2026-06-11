@@ -40,19 +40,19 @@ export interface AgentSessionState {
   trackerSessionId: string
   /**
    * Issue tracker provider that owns this session.
-   * Defaults to 'linear' when reading legacy Redis data written before REN-1517.
+   * Defaults to 'linear' when reading legacy Redis data written before.
    */
   trackerProvider: string
   /**
    * @deprecated Use `trackerSessionId` instead.
    * Kept for one major version to allow zero-downtime rolling upgrades
-   * against Redis data written by pre-REN-1517 workers.
+   * against Redis data written by legacy workers.
    * Will be removed in the next major release.
    */
   linearSessionId?: string
   /** Linear issue ID */
   issueId: string
-  /** Issue identifier (e.g., SUP-123) */
+  /** Issue identifier (e.g., ABC-123) */
   issueIdentifier?: string
   /** Provider CLI session ID for resuming with --resume */
   providerSessionId: string | null
@@ -164,9 +164,9 @@ function buildSessionKey(sessionId: string): string {
 }
 
 /**
- * Migrate legacy Redis data written before REN-1517.
+ * Migrate legacy Redis data written before.
  *
- * Pre-REN-1517 workers stored sessions with `linearSessionId` as the primary
+ * legacy workers stored sessions with `linearSessionId` as the primary
  * field. This helper promotes the value to `trackerSessionId` / `trackerProvider`
  * so all code can use the new shape uniformly.  The raw `linearSessionId` field
  * is left in place so it can still satisfy the deprecated optional.

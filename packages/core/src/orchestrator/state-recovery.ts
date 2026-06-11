@@ -293,9 +293,9 @@ export function createInitialState(options: {
 /**
  * Generate the task list ID for a worktree (matches orchestrator format)
  *
- * @param issueIdentifier - Issue identifier (e.g., "SUP-123")
+ * @param issueIdentifier - Issue identifier (e.g., "ABC-123")
  * @param workType - Work type suffix (e.g., "development" -> "DEV")
- * @returns Task list ID (e.g., "SUP-123-DEV")
+ * @returns Task list ID (e.g., "ABC-123-DEV")
  */
 export function getTaskListId(
   issueIdentifier: string,
@@ -397,7 +397,7 @@ export function buildRecoveryPrompt(
 /**
  * Build a context injection string for session resume (non-crash).
  * Returns empty string if no context is available.
- * Uses neutral framing to avoid "context anxiety" (from SUP-1186 research).
+ * Uses neutral framing to avoid "context anxiety" (from prior research).
  */
 export function buildResumeContext(contextSection: string): string {
   if (!contextSection) return ''

@@ -1,7 +1,7 @@
 /**
  * Architectural Intelligence — type vocabulary
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §Architectural Intelligence
  *
  * Design decisions:
@@ -25,7 +25,7 @@
  *   declared locally for the same provider-orthogonality reason.
  *
  * Observation pipeline, synthesis prompts, and drift detection logic are
- * out-of-scope for this skeleton (see REN-1316, REN-1317, REN-1318).
+ * out-of-scope for this skeleton.
  * The types here are the stable vocabulary those issues will target.
  */
 
@@ -171,7 +171,7 @@ export interface Citation {
  * Identifies a VCS change without coupling to a specific provider.
  * Used to cross-reference architectural nodes back to PRs/commits.
  *
- * REN-1324 will wire the workarea observation seam; this type is the
+ * A follow-up will wire the workarea observation seam; this type is the
  * declared contract that wiring targets.
  */
 export interface ChangeRef {
@@ -462,7 +462,7 @@ export interface ArchQuerySpec {
 /**
  * An observation contributed to the architectural intelligence graph.
  *
- * Observations are the raw input; the synthesis pipeline (REN-1317) refines
+ * Observations are the raw input; the synthesis pipeline refines
  * them into `ArchitecturalPattern`, `Convention`, `Decision`, and `Deviation`
  * nodes.
  *
@@ -485,7 +485,7 @@ export interface ArchObservation {
   source: {
     sessionId?: string
     changeRef?: ChangeRef
-    /** When produced by a kit's intelligence extractor (REN-1316). */
+    /** When produced by a kit's intelligence extractor. */
     extractorId?: string
     /**
      * When the source is a human-authored document (CLAUDE.md, ADR).
@@ -510,9 +510,9 @@ export interface ArchObservation {
  * Implementations:
  *   - `SqliteArchitecturalIntelligence` (this package) — single-tenant, local.
  *     Uses node:sqlite (Node 22+) with text-search. Placeholder for vector
- *     index; embeddings added in a follow-up (REN-1319).
+ *     index; embeddings added in a follow-up.
  *   - `PostgresArchitecturalIntelligence` (stub) — multi-tenant SaaS.
- *     Deferred to REN-1322; reuses Memory's RLS layer.
+ *     deferred to follow-up work; reuses Memory's RLS layer.
  *
  * Constraint (non-negotiable per 007 §"Strategic positioning"):
  *   Authored intent (CLAUDE.md, ADRs) is always higher-confidence than
@@ -525,7 +525,7 @@ export interface ArchitecturalIntelligence {
    * Retrieve architectural context relevant to a session.
    *
    * Called automatically at session start by the orchestrator; agents may
-   * also call it directly via MCP tools (REN-1323).
+   * also call it directly via MCP tools.
    *
    * Priority ordering for bounded context (maxTokens):
    *   drift warnings > active issue patterns > project-wide conventions > org-wide patterns
@@ -540,7 +540,7 @@ export interface ArchitecturalIntelligence {
    * Contribute an observation to the architectural graph.
    *
    * Producers: PR merges, refactors, agent decisions, kit-shipped extractors.
-   * The synthesis pipeline (REN-1317) will later refine raw observations into
+   * The synthesis pipeline will later refine raw observations into
    * higher-level architectural nodes.
    */
   contribute(observation: ArchObservation): Promise<void>
@@ -552,7 +552,7 @@ export interface ArchitecturalIntelligence {
    * a requested format. Markdown: prose; Mermaid: diagrams; JSON: raw nodes.
    *
    * NOTE: This is a skeleton — the synthesis prompt is out-of-scope for
-   * REN-1315. The stub returns a placeholder string.
+   *. The stub returns a placeholder string.
    */
   synthesize(scope: ArchScope, format: 'markdown' | 'mermaid' | 'json'): Promise<string>
 
@@ -563,7 +563,7 @@ export interface ArchitecturalIntelligence {
    * High-severity deviations can block PRs per tenant policy.
    *
    * NOTE: This is a skeleton — the drift detection algorithm is out-of-scope
-   * for REN-1315. The stub returns an empty DriftReport.
+   * for. The stub returns an empty DriftReport.
    */
   assess(change: ChangeRef): Promise<DriftReport>
 }

@@ -5,7 +5,6 @@
  * Schema is derived from TemplateContext fields referenced in the template's
  * prompt via Handlebars expressions.
  *
- * @see SUP-1758
  */
 
 import type { JSONSchema7, JSONSchema7Definition } from 'json-schema'
@@ -29,7 +28,7 @@ export interface TemplateSchemaOptions {
  * This is the source of truth for schema generation.
  */
 const CONTEXT_FIELD_SCHEMAS: Record<string, JSONSchema7Definition> = {
-  identifier: { type: 'string', description: 'Issue identifier, e.g., "SUP-123"' },
+  identifier: { type: 'string', description: 'Issue identifier, e.g., "ABC-123"' },
   mentionContext: { type: 'string', description: 'Optional user mention text providing additional context' },
   startStatus: { type: 'string', description: 'Status to show when agent starts, e.g., "Started"' },
   completeStatus: { type: 'string', description: 'Status to show when agent completes, e.g., "Finished"' },

@@ -4,7 +4,7 @@
  * TypeScript interfaces and Zod schemas for the YAML-based workflow template system.
  * Templates use Handlebars for interpolation and partials for composability.
  *
- * Architecture decisions (from SUP-701):
+ * Architecture decisions (from):
  * - YAML format with Handlebars interpolation (not custom parser)
  * - Single flat `prompt` field (not sectioned)
  * - State transitions stay in TypeScript (not in templates)
@@ -88,7 +88,7 @@ export interface PartialTemplate {
  * Variables available for interpolation in workflow templates.
  */
 export interface TemplateContext {
-  /** Issue identifier, e.g., "SUP-123" */
+  /** Issue identifier, e.g., "ABC-123" */
   identifier: string
   /** Optional user mention text providing additional context */
   mentionContext?: string
@@ -195,7 +195,7 @@ export interface TemplateContext {
   /** Pre-built context from past observations, injected by the context builder */
   sessionMemoryContext?: string
 
-  // Architectural Intelligence (REN-1316)
+  // Architectural Intelligence
   /**
    * Rendered architectural context section (## Architectural context).
    * Injected by the orchestrator at session start from ArchitecturalIntelligence.query().
@@ -355,7 +355,7 @@ export const TemplateContextSchema = z.object({
   }).optional(),
   // Session memory (cross-session context injection)
   sessionMemoryContext: z.string().optional(),
-  // Architectural Intelligence (REN-1316)
+  // Architectural Intelligence
   architecturalContext: z.string().optional(),
 })
 

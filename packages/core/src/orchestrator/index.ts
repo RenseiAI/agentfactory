@@ -246,7 +246,7 @@ export { ContextManager } from './context-manager.js'
 export type { ContextManagerConfig } from './context-manager.js'
 
 // Sandbox scheduler — cross-provider capability-based routing
-// Architecture reference: rensei-architecture/004-sandbox-capability-matrix.md
+// Architecture reference: donmai-architecture/004-sandbox-capability-matrix.md
 export {
   pickProvider,
   normalizeCost,

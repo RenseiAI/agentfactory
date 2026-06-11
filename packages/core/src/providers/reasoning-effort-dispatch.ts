@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// REN-1245 — Per-step reasoning-effort dispatch gate
+// Per-step reasoning-effort dispatch gate
 //
 // Workflow steps and agent configs declare a per-step reasoning-effort hint
 // via `Profile.dispatch.effort` (`low | medium | high | xhigh`). The
@@ -20,8 +20,8 @@
 // `./types.ts`) per ADR-2026-04-28-sandbox-capabilities-in-types.md.
 //
 // Architecture references:
-//   * rensei-architecture/001-layered-execution-model.md §Layer 6
-//   * rensei-architecture/002-provider-base-contract.md §Capabilities
+//   * donmai-architecture/001-layered-execution-model.md §Layer 6
+//   * donmai-architecture/002-provider-base-contract.md §Capabilities
 // ---------------------------------------------------------------------------
 
 import type { EffortLevel } from '../config/profiles.js'
@@ -114,7 +114,7 @@ function syntheticProviderRef(provider: AgentProvider): ProviderRef {
  *                                               capability-mismatch hook
  *
  * The hook emit is fire-and-forget (we void the promise) — the bus
- * isolates subscriber crashes per REN-1313, so a buggy subscriber cannot
+ * isolates subscriber crashes per the hook-bus contract, so a buggy subscriber cannot
  * block dispatch.
  */
 export function applyReasoningEffort(

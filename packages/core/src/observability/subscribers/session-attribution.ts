@@ -1,7 +1,7 @@
 /**
  * Session-attribution subscriber — tags hook events with session metadata.
  *
- * Architecture reference: rensei-architecture/002-provider-base-contract.md §Lifecycle hooks
+ * Architecture reference: donmai-architecture/002-provider-base-contract.md §Lifecycle hooks
  *
  * Purpose:
  *   Every hook event that touches a provider is correlated with the active

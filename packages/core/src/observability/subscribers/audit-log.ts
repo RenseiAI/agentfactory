@@ -1,7 +1,7 @@
 /**
  * Audit-log subscriber — writes NDJSON audit records for every hook event.
  *
- * Architecture reference: rensei-architecture/002-provider-base-contract.md §Lifecycle hooks
+ * Architecture reference: donmai-architecture/002-provider-base-contract.md §Lifecycle hooks
  *
  * Configuration:
  *   DONMAI_AUDIT_LOG_PATH — path to the NDJSON file.

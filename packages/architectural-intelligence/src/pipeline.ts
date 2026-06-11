@@ -1,15 +1,15 @@
 /**
  * Architectural Intelligence — observation pipeline
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Architectural Intelligence" — Inference pipeline
  *
- * REN-1324: Implements the writer-side of Architectural Intelligence.
+ * Implements the writer-side of Architectural Intelligence.
  *
  * Responsibilities:
  *   1. Subscribe to Memory observation events (kind: memory.observation.*)
  *      on a HookBus-compatible bus. Memory implementation is separate
- *      (REN-1184); this pipeline handles the event-driven side by listening
+ *     ; this pipeline handles the event-driven side by listening
  *      on the bus via `attachPipelineSubscribers`.
  *   2. Subscribe to workarea lifecycle hooks (workarea-acquired,
  *      post-verb on workarea verbs) for session-level observation capture.
@@ -35,7 +35,7 @@
  *
  * Memory observation events:
  *   The pipeline handles events whose kind starts with `memory.observation.`
- *   These are emitted by the Memory layer (REN-1184). For test injection,
+ *   These are emitted by the Memory layer. For test injection,
  *   emit events onto the bus with kind = 'memory.observation.pattern' etc.
  *   and an `observation` field conforming to ArchObservation.
  *
@@ -96,7 +96,7 @@ export interface PipelineHookBus {
 // ---------------------------------------------------------------------------
 
 /**
- * Event kinds emitted by the Memory layer (REN-1184) on the hook bus.
+ * Event kinds emitted by the Memory layer on the hook bus.
  * The pipeline subscribes to all of them.
  */
 export const MEMORY_OBSERVATION_KINDS = [
@@ -378,7 +378,7 @@ export interface PipelineSubscriberOptions {
  *
  * Subscribes to:
  *   - `memory.observation.*` events → contributed directly via ai.contribute()
- *     These are emitted by the Memory layer (REN-1184). For tests, emit
+ *     These are emitted by the Memory layer. For tests, emit
  *     MemoryObservationEvent values onto the bus.
  *   - `post-activate` events for workarea providers → lightweight pattern obs.
  *   - `post-verb` events for workarea providers → track significant verbs.

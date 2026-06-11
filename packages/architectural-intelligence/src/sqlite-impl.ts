@@ -1,7 +1,7 @@
 /**
  * SqliteArchitecturalIntelligence — single-tenant local implementation
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"OSS vs SaaS responsibilities" — OSS ships single-project synthesis with
  * sqlite + local storage.
  *
@@ -16,7 +16,7 @@
  * Search strategy (skeleton):
  *   Text-search via SQL LIKE / INSTR — a placeholder for proper BM25 or
  *   vector-embedding search. Embeddings and BM25 are added in a follow-up
- *   issue (REN-1319). The storage schema is intentionally simple so the
+ *   issue. The storage schema is intentionally simple so the
  *   follow-up can upgrade it incrementally.
  *
  * Authored-intent constraint:
@@ -238,7 +238,7 @@ interface DeviationRow {
  * Single-tenant, local SQLite implementation of ArchitecturalIntelligence.
  *
  * This is the OSS reference implementation. The SaaS Postgres implementation
- * (REN-1322) shares the same interface; deployers choose which to instantiate.
+ * shares the same interface; deployers choose which to instantiate.
  */
 export class SqliteArchitecturalIntelligence implements ArchitecturalIntelligence {
   private readonly _db: DatabaseSync
@@ -345,7 +345,7 @@ export class SqliteArchitecturalIntelligence implements ArchitecturalIntelligenc
     }
 
     if (spec.includeActiveDrift) {
-      // Drift report is a skeleton placeholder — deferred to REN-1317
+      // Drift report is a skeleton placeholder — deferred to follow-up work
       view.drift = _emptyDriftReport(scope)
     }
 
@@ -378,7 +378,7 @@ export class SqliteArchitecturalIntelligence implements ArchitecturalIntelligenc
     // Materialize the observation into a typed architectural node.
     // This is a simplified direct-materialization path for the skeleton.
     // The full synthesis pipeline (prompts, clustering, dedup) is deferred
-    // to REN-1317 and will replace this direct path.
+    // to follow-up work and will replace this direct path.
     switch (observation.kind) {
       case 'pattern':
         this._materializePattern(id, observation, now)
@@ -400,8 +400,8 @@ export class SqliteArchitecturalIntelligence implements ArchitecturalIntelligenc
   // ---------------------------------------------------------------------------
 
   async synthesize(scope: ArchScope, format: 'markdown' | 'mermaid' | 'json'): Promise<string> {
-    // Skeleton placeholder — synthesis prompts are out-of-scope for REN-1315.
-    // The full synthesis implementation is deferred to REN-1317.
+    // Skeleton placeholder — synthesis prompts are out-of-scope for.
+    // The full synthesis implementation is deferred to.
     const view = await this.query({ workType: 'research', scope, includeActiveDrift: false })
 
     if (format === 'json') {
@@ -460,7 +460,7 @@ export class SqliteArchitecturalIntelligence implements ArchitecturalIntelligenc
   /**
    * Assess a change for architectural drift.
    *
-   * REN-1326: Delegates to the `assessChange()` function in drift.ts, which
+   * Delegates to the `assessChange()` function in drift.ts, which
    * runs the deviation-detection prompt and returns a structured DriftReport.
    *
    * Requires a ModelAdapter. When called without one (e.g., from query() with
@@ -830,7 +830,7 @@ function _emptyDriftReport(scope: ArchScope): DriftReport {
     deviations: [],
     reinforced: [],
     hasCriticalDrift: false,
-    summary: 'Drift assessment not yet implemented (REN-1317).',
+    summary: 'Drift assessment not yet implemented.',
     assessedAt: new Date(),
   }
 }

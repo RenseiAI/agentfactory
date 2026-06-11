@@ -105,7 +105,7 @@ export interface SuggestedIssue {
 export interface TrackedIssue {
   /** Linear issue ID (UUID) */
   linearIssueId: string
-  /** Human-readable identifier (e.g., SUP-123) */
+  /** Human-readable identifier (e.g., ABC-123) */
   linearIdentifier: string
   /** Unix timestamp when first created */
   createdAt: number
