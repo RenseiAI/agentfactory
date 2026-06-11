@@ -29,9 +29,9 @@ jobs:
       packages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       # Node 24 ships with npm 11.5.1+ which is REQUIRED for OIDC Trusted Publishers.
       # Node 20/22 ship with npm 10.x which has broken OIDC support.
@@ -41,7 +41,7 @@ jobs:
       # line to .npmrc which npm then prioritizes over the OIDC handshake,
       # causing 404 errors on publish. The default registry is registry.npmjs.org
       # so no configuration is needed.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
@@ -123,7 +123,7 @@ jobs:
 
       - name: Setup Node.js for GitHub Packages
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://npm.pkg.github.com
