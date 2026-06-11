@@ -10,7 +10,12 @@ import { describe, it, expect } from 'vitest'
  * - Missing or renamed function/class exports
  */
 
-describe('@donmai/server subpath exports', () => {
+// The first `import('../index.js')` pays the full barrel-transform cost
+// (the entire @donmai/server module graph), which is several seconds under
+// parallel load and can exceed vitest's 5s default. Give the suite a generous
+// timeout so this transform-bound smoke test never flakes; the imports
+// themselves are trivial and cached after the first.
+describe('@donmai/server subpath exports', { timeout: 30_000 }, () => {
   // Redis exports
   it('exports isRedisConfigured from main', async () => {
     const mod = await import('../index.js')

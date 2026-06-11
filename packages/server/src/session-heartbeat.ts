@@ -36,6 +36,7 @@
 
 import { isRedisConfigured, redisSet } from './redis.js'
 import { sessionEventBus, type SessionEventBus } from './session-event-bus.js'
+import { touchSessionHeartbeat } from './session-storage.js'
 
 /**
  * 15-second heartbeat cadence (per ADR Decision 5).  Override via the
@@ -146,6 +147,18 @@ export function createSessionHeartbeat(
       )
     } catch (err) {
       log.warn('Redis heartbeat pointer write failed (non-fatal)', {
+        sessionId: options.sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+
+    // Heartbeat-couple the session row's `updatedAt` so a long-running session
+    // keeps its row fresh and is never mistaken for a strand by orphan cleanup.
+    // Best-effort: a failure here MUST NOT disturb the heartbeat loop.
+    try {
+      await touchSessionHeartbeat(options.sessionId)
+    } catch (err) {
+      log.warn('Session row heartbeat touch failed (non-fatal)', {
         sessionId: options.sessionId,
         error: err instanceof Error ? err.message : String(err),
       })
