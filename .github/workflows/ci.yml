@@ -155,6 +155,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+      # No test artifacts, RENSEI_ env names, or private references in
+      # anything `pnpm publish` would ship.
+      - name: Check publish surface
+        run: bash scripts/check-publish-surface.sh
+
   test:
     name: Test
     runs-on: ubuntu-latest
