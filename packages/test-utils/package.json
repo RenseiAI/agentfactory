@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5.7.3",
-    "vitest": "^3.2.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6",
     "@donmai/core": "workspace:*",
     "@donmai/plugin-linear": "workspace:*"
   }
