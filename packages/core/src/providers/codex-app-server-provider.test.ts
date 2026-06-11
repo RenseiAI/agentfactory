@@ -870,6 +870,10 @@ describe('AppServerProcessManager — lifecycle', () => {
     const initReq = JSON.parse(initializeCall.trim())
     expect(initReq.method).toBe('initialize')
     expect(initReq.id).toBe(1)
+    // De-branded handshake identity: the legacy 'agentfactory' client name
+    // must never reappear on the wire.
+    expect(initReq.params.clientInfo.name).toBe('donmai')
+    expect(initReq.params.clientInfo.title).toBe('Donmai Orchestrator')
 
     // Send back a successful response
     emitLine({ id: 1, result: { capabilities: {} } })
@@ -1447,6 +1451,14 @@ describe('Approval & Sandbox Policy Resolution (via spawn params)', () => {
 
     const threadStartReq = await driveToThreadStart(handle)
     expect(threadStartReq.params.sandbox).toBe('workspace-write')
+  })
+
+  it('thread/start identifies the de-branded donmai service name', async () => {
+    const provider = new CodexAppServerProvider()
+    const handle = provider.spawn(makeConfig({}))
+
+    const threadStartReq = await driveToThreadStart(handle)
+    expect(threadStartReq.params.serviceName).toBe('donmai')
   })
 })
 
