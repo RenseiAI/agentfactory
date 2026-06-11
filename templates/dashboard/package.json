@@ -19,7 +19,7 @@
     "@donmai/plugin-linear": "^0.9.4",
     "@donmai/nextjs": "^0.9.4",
     "@donmai/server": "^0.9.4",
-    "next": "16.2.6",
+    "next": "16.2.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

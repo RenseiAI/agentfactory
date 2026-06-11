@@ -50,7 +50,7 @@
   "dependencies": {
     "@donmai/core": "workspace:*",
     "@donmai/server": "workspace:*",
-    "yaml": "^2.8.2"
+    "yaml": "^2.9.0"
   },
   "peerDependencies": {
     "@donmai/plugin-linear": "workspace:*",

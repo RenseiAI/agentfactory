@@ -20,12 +20,12 @@ jobs:
       contents: read
       pull-requests: write # gitleaks-action posts PR comments on findings
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: ${{ env.GITLEAKS_LICENSE != '' }}
         with:
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         if: ${{ env.GITLEAKS_LICENSE != '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -37,11 +37,11 @@ jobs:
     name: License Compliance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -61,7 +61,7 @@ jobs:
     env:
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: ${{ env.FOSSA_API_KEY != '' }}
 
       - uses: fossas/fossa-action@main
@@ -76,7 +76,7 @@ jobs:
     env:
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: ${{ env.FOSSA_API_KEY != '' }}
 
       - uses: fossas/fossa-action@main
@@ -92,7 +92,7 @@ jobs:
     env:
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: ${{ env.FOSSA_API_KEY != '' }}
 
       - name: Install FOSSA CLI
@@ -114,7 +114,7 @@ jobs:
 
       - name: Upload SBOM artifacts
         if: ${{ env.FOSSA_API_KEY != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-and-notices
           path: |
@@ -126,11 +126,11 @@ jobs:
     name: Typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -143,11 +143,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [typecheck]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -160,11 +160,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -178,7 +178,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check if quality ratchet is configured
         id: ratchet-check
@@ -190,10 +190,10 @@ jobs:
             echo "Quality ratchet not configured — skipping"
           fi
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: steps.ratchet-check.outputs.exists == 'true'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: steps.ratchet-check.outputs.exists == 'true'
         with:
           node-version: 22

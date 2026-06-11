@@ -1,13 +1,39 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
-    directory: "/"
-    schedule: { interval: "weekly" }
+    directories:
+      - "/"
+      - "/templates/dashboard"
+    schedule:
+      interval: "weekly"
+      day: "monday"
     open-pull-requests-limit: 10
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
     groups:
-      minor-and-patch:
+      production-minor-patch:
+        applies-to: version-updates
+        dependency-type: "production"
         update-types: ["minor", "patch"]
+      development:
+        applies-to: version-updates
+        dependency-type: "development"
+        patterns: ["*"]
+        update-types: ["major", "minor", "patch"]
+      production-major:
+        applies-to: version-updates
+        dependency-type: "production"
+        update-types: ["major"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule: { interval: "weekly" }
-    open-pull-requests-limit: 10
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: ["major", "minor", "patch"]
