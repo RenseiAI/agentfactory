@@ -113,67 +113,81 @@ jobs:
         if: steps.check.outputs.should_publish == 'true'
         run: .github/scripts/publish-if-needed.sh @donmai/mcp-server "$RELEASE_VERSION" --provenance --access public
 
-      # Publish to GitHub Packages
+      # Publish to GitHub Packages under the @renseiai scope.
+      # The @donmai scope has no matching GitHub user/org, so GHP 403s every
+      # upload. RenseiAI is the repo owner, so we mirror the tarballs there
+      # by rewriting `name` and internal cross-deps before publishing.
+      - name: Rewrite package names @donmai/* -> @renseiai/* for GHP
+        if: steps.check.outputs.should_publish == 'true'
+        run: .github/scripts/rename-to-renseiai-for-ghp.sh
+
       - name: Setup Node.js for GitHub Packages
         if: steps.check.outputs.should_publish == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://npm.pkg.github.com
-          scope: '@donmai'
+          scope: '@renseiai'
 
       - name: Remove deprecated always-auth from .npmrc
         if: steps.check.outputs.should_publish == 'true'
         run: sed -i '/always-auth/d' "$NPM_CONFIG_USERCONFIG"
 
-      - name: Publish @donmai/plugin-linear to GitHub Packages
+      - name: Publish @renseiai/plugin-linear to GitHub Packages
         if: steps.check.outputs.should_publish == 'true'
         continue-on-error: true
-        run: .github/scripts/publish-if-needed.sh @donmai/plugin-linear "$RELEASE_VERSION"
+        run: .github/scripts/publish-if-needed.sh @renseiai/plugin-linear "$RELEASE_VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish @donmai/architectural-intelligence to GitHub Packages
+      - name: Publish @renseiai/architectural-intelligence to GitHub Packages
         if: steps.check.outputs.should_publish == 'true'
         continue-on-error: true
-        run: .github/scripts/publish-if-needed.sh @donmai/architectural-intelligence "$RELEASE_VERSION"
+        run: .github/scripts/publish-if-needed.sh @renseiai/architectural-intelligence "$RELEASE_VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish @donmai/core to GitHub Packages
+      - name: Publish @renseiai/core to GitHub Packages
         if: steps.check.outputs.should_publish == 'true'
         continue-on-error: true
-        run: .github/scripts/publish-if-needed.sh @donmai/core "$RELEASE_VERSION"
+        run: .github/scripts/publish-if-needed.sh @renseiai/core "$RELEASE_VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish @donmai/server to GitHub Packages
+      - name: Publish @renseiai/server to GitHub Packages
         if: steps.check.outputs.should_publish == 'true'
         continue-on-error: true
-        run: .github/scripts/publish-if-needed.sh @donmai/server "$RELEASE_VERSION"
+        run: .github/scripts/publish-if-needed.sh @renseiai/server "$RELEASE_VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish @donmai/dashboard to GitHub Packages
+      - name: Publish @renseiai/dashboard to GitHub Packages
         if: steps.check.outputs.should_publish == 'true'
         continue-on-error: true
-        run: .github/scripts/publish-if-needed.sh @donmai/dashboard "$RELEASE_VERSION"
+        run: .github/scripts/publish-if-needed.sh @renseiai/dashboard "$RELEASE_VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish @donmai/mcp-server to GitHub Packages
+      - name: Publish @renseiai/mcp-server to GitHub Packages
         if: steps.check.outputs.should_publish == 'true'
         continue-on-error: true
-        run: .github/scripts/publish-if-needed.sh @donmai/mcp-server "$RELEASE_VERSION"
+        run: .github/scripts/publish-if-needed.sh @renseiai/mcp-server "$RELEASE_VERSION"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Create GitHub Release
+      - name: Restore @donmai/* package names after GHP publish
+        if: steps.check.outputs.should_publish == 'true'
+        run: git checkout -- packages/
+
+      # Create GitHub Release. Tag is v$RELEASE_VERSION so workflow_dispatch
+      # (where $GITHUB_REF_NAME is the branch, e.g. "main") produces a valid
+      # release. For tag-push triggers the two are equivalent.
       - name: Create GitHub Release
         if: steps.check.outputs.should_publish == 'true'
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+          gh release create "v$RELEASE_VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "v$RELEASE_VERSION" \
             --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -198,7 +212,7 @@ jobs:
       - name: Attach SBOMs to GitHub Release
         if: steps.check.outputs.should_publish == 'true' && env.FOSSA_API_KEY != ''
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
+          gh release upload "v$RELEASE_VERSION" \
             sbom-spdx.json \
             sbom-cyclonedx.json \
             NOTICE \
