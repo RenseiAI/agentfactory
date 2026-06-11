@@ -44,7 +44,7 @@
   ],
   "dependencies": {
     "@donmai/core": "workspace:*",
-    "@linear/sdk": "^70.0.0"
+    "@linear/sdk": "^84.0.0"
   },
   "peerDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.7",
