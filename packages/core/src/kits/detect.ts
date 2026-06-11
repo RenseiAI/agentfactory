@@ -9,7 +9,7 @@
  *
  * Phase 2 — Executable (gated on Phase 1 pass):
  *   Run `[detect].exec` binary inside the workarea sandbox. Requires
- *   RENSEI_ALLOW_EXECUTABLE_DETECT=true (or the `allowExecutable` option).
+ *   DONMAI_ALLOW_EXECUTABLE_DETECT=true (or the `allowExecutable` option).
  *   Capped at MAX_CONCURRENT_EXEC_DETECTS concurrent execs (default 4).
  *   Untrusted kits (no explicit trustedKitIds or empty authorIdentity)
  *   are not run in Phase 2.
@@ -219,7 +219,7 @@ const MAX_CONCURRENT_EXEC_DETECTS = 4
 export interface ExecutableDetectOptions {
   /**
    * Allow Phase 2 executable detection.
-   * Defaults to process.env.RENSEI_ALLOW_EXECUTABLE_DETECT === 'true'.
+   * Defaults to process.env.DONMAI_ALLOW_EXECUTABLE_DETECT === 'true'.
    */
   allowExecutable?: boolean
   /**
@@ -279,7 +279,7 @@ export async function runExecutableDetect(
 
     const child = spawn(execPath, [], {
       cwd: workareaRoot,
-      env: { ...process.env, RENSEI_DETECT: '1' },
+      env: { ...process.env, DONMAI_DETECT: '1' },
       shell: false,
     })
 
@@ -384,7 +384,7 @@ export async function detectKits(
 ): Promise<KitCandidate[]> {
   const allowExecutable =
     options.allowExecutable ??
-    process.env.RENSEI_ALLOW_EXECUTABLE_DETECT === 'true'
+    process.env.DONMAI_ALLOW_EXECUTABLE_DETECT === 'true'
 
   const maxConcurrency = options.maxConcurrency ?? MAX_CONCURRENT_EXEC_DETECTS
   const semaphore = new Semaphore(maxConcurrency)

@@ -25,7 +25,7 @@ export interface CleanupSubIssuesConfig {
   apply: boolean
   /** Optional tracking issue identifier (e.g. "REN-1323") to post the report on */
   trackingIssueId?: string
-  /** Path to known-agent-authors config (defaults to .rensei/known-agent-authors.json) */
+  /** Path to known-agent-authors config (defaults to .donmai/known-agent-authors.json) */
   agentAuthorsConfigPath?: string
   /** Working directory for config file resolution (defaults to cwd) */
   cwd?: string
@@ -364,7 +364,7 @@ async function buildLinearClientFromApiKey(apiKey: string): Promise<LinearClient
 export async function runCleanupSubIssues(config: CleanupSubIssuesConfig): Promise<CleanupReport> {
   const cwd = config.cwd ?? process.cwd()
   const agentAuthorsConfigPath =
-    config.agentAuthorsConfigPath ?? resolve(cwd, '.rensei', 'known-agent-authors.json')
+    config.agentAuthorsConfigPath ?? resolve(cwd, '.donmai', 'known-agent-authors.json')
 
   const agentConfig = loadAgentAuthorsConfig(agentAuthorsConfigPath)
 

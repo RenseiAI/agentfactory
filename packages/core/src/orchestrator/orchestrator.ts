@@ -160,7 +160,7 @@ const DEFAULT_MAX_SESSION_TIMEOUT_MS: number | undefined = undefined
 // leak into agent processes from app .env.local files, Claude Code switches
 // from Max subscription billing to API-key billing. Apps that need an
 // Anthropic API key should use a namespaced name instead (e.g.
-// RENSEI_SOCIAL_ANTHROPIC_API_KEY) which won't be recognised by Claude Code.
+// MYAPP_ANTHROPIC_API_KEY) which won't be recognised by Claude Code.
 const AGENT_ENV_BLOCKLIST = [
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_AUTH_TOKEN',

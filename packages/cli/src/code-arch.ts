@@ -14,18 +14,18 @@
  *   af-arch assess --repository <repo> --pr <number>
  *
  * Environment:
- *   RENSEI_DRIFT_GATE      — Gate policy: 'none' | 'no-severity-high' |
+ *   DONMAI_DRIFT_GATE      — Gate policy: 'none' | 'no-severity-high' |
  *                            'zero-deviations' | 'max:N'
  *   ANTHROPIC_API_KEY      — Enables live LLM drift assessment.
  *                            Without this key, the CLI uses a stub adapter
  *                            that returns an empty DriftReport with a notice.
- *   RENSEI_ARCH_DB         — Path to the SQLite DB (default: .donmai/arch-intelligence/db.sqlite)
+ *   DONMAI_ARCH_DB         — Path to the SQLite DB (default: .donmai/arch-intelligence/db.sqlite)
  *
  * Output:
  *   JSON to stdout. Non-zero exit code when the gate policy is triggered.
  *   Exit codes:
  *     0  — Clean (no deviations / gate not triggered)
- *     1  — Gate triggered (threshold exceeded per RENSEI_DRIFT_GATE policy)
+ *     1  — Gate triggered (threshold exceeded per DONMAI_DRIFT_GATE policy)
  *     2  — Error (invalid args, network failure, parse error)
  */
 
@@ -73,15 +73,15 @@ Options:
                                 max:N              Block when deviations > N
   --scope-level <level>       Scope level: project | org | tenant | global (default: project)
   --project-id <id>           Project ID for scope (optional)
-  --db <path>                 Path to SQLite DB (overrides RENSEI_ARCH_DB)
+  --db <path>                 Path to SQLite DB (overrides DONMAI_ARCH_DB)
   --json                      Output raw JSON (default)
   --summary                   Output human-readable summary instead of JSON
   --help, -h                  Show this help message
 
 Environment:
-  RENSEI_DRIFT_GATE            Gate policy (overridden by --gate-policy)
+  DONMAI_DRIFT_GATE            Gate policy (overridden by --gate-policy)
   ANTHROPIC_API_KEY            Enables live LLM assessment (required for real drift detection)
-  RENSEI_ARCH_DB               SQLite DB path (default: .donmai/arch-intelligence/db.sqlite)
+  DONMAI_ARCH_DB               SQLite DB path (default: .donmai/arch-intelligence/db.sqlite)
 
 Exit codes:
   0  Clean — no deviations or gate not triggered
@@ -92,7 +92,7 @@ Examples:
   af-arch assess https://github.com/org/repo/pull/123
   af-arch assess --repository github.com/org/repo --pr 123
   af-arch assess https://github.com/org/repo/pull/123 --gate-policy zero-deviations
-  RENSEI_DRIFT_GATE=max:2 af-arch assess https://github.com/org/repo/pull/123
+  DONMAI_DRIFT_GATE=max:2 af-arch assess https://github.com/org/repo/pull/123
 
 Successor:
   This binary is deprecated. The native Go \`donmai arch assess\` command

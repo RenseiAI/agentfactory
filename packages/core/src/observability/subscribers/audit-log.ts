@@ -4,11 +4,11 @@
  * Architecture reference: rensei-architecture/002-provider-base-contract.md §Lifecycle hooks
  *
  * Configuration:
- *   RENSEI_AUDIT_LOG_PATH — path to the NDJSON file.
- *     Default: ./.rensei/audit/<YYYY-MM-DD>.ndjson
+ *   DONMAI_AUDIT_LOG_PATH — path to the NDJSON file.
+ *     Default: ./.donmai/audit/<YYYY-MM-DD>.ndjson
  *
  * The subscriber is opt-in: call registerAuditLogSubscriber(bus) to attach it.
- * Default behavior (auto-attach) is only enabled when RENSEI_AUDIT_ENABLE=true.
+ * Default behavior (auto-attach) is only enabled when DONMAI_AUDIT_ENABLE=true.
  */
 
 import { appendFileSync, mkdirSync } from 'node:fs'
@@ -42,12 +42,12 @@ export interface AuditRecord {
 
 function defaultAuditLogPath(): string {
   const date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-  return resolve(process.cwd(), '.rensei', 'audit', `${date}.ndjson`)
+  return resolve(process.cwd(), '.donmai', 'audit', `${date}.ndjson`)
 }
 
 function resolveAuditLogPath(): string {
-  return process.env.RENSEI_AUDIT_LOG_PATH
-    ? resolve(process.env.RENSEI_AUDIT_LOG_PATH)
+  return process.env.DONMAI_AUDIT_LOG_PATH
+    ? resolve(process.env.DONMAI_AUDIT_LOG_PATH)
     : defaultAuditLogPath()
 }
 
@@ -180,7 +180,7 @@ function writeRecord(record: AuditRecord, filePath: string): void {
 export interface AuditLogSubscriberOptions {
   /**
    * Path to the NDJSON audit log file.
-   * Defaults to RENSEI_AUDIT_LOG_PATH env var, then ./.rensei/audit/<date>.ndjson.
+   * Defaults to DONMAI_AUDIT_LOG_PATH env var, then ./.donmai/audit/<date>.ndjson.
    */
   logPath?: string
 

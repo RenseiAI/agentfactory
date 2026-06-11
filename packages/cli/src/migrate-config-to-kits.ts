@@ -5,7 +5,7 @@
  * One-shot migration that converts per-project overrides in
  * `.donmai/config.yaml` (`projectPaths` with buildCommand /
  * testCommand / validateCommand / packageManager) into per-project
- * `.rensei/kits/<project>.kit.toml` manifests.
+ * `.donmai/kits/<project>.kit.toml` manifests.
  *
  * After migration the legacy config is still valid (read-only bridge
  * continues to synthesize in-memory kits), so migration is opt-in.
@@ -73,7 +73,7 @@ function printHelp(): void {
 AgentFactory Config → Kits Migration
 
 Converts projectPaths overrides in .donmai/config.yaml into
-per-project .rensei/kits/<project>.kit.toml manifests.
+per-project .donmai/kits/<project>.kit.toml manifests.
 
 Usage:
   af-migrate-config-to-kits [options]
@@ -158,8 +158,8 @@ export async function runMigration(argv: string[] = process.argv): Promise<void>
   const projectNames = Object.keys(repoConfig.projectPaths)
   console.log(`Found ${projectNames.length} project(s) in projectPaths:\n`)
 
-  // Output directory: .rensei/kits/ at the repo root
-  const kitsDir = join(repoRoot, '.rensei', 'kits')
+  // Output directory: .donmai/kits/ at the repo root
+  const kitsDir = join(repoRoot, '.donmai', 'kits')
 
   if (!args.dryRun && !existsSync(kitsDir)) {
     mkdirSync(kitsDir, { recursive: true })

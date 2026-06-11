@@ -298,7 +298,7 @@ describe('runCleanupSubIssues — heuristic classification', () => {
       dryRun: true,
       apply: false,
       linearClient: client,
-      agentAuthorsConfigPath: '/nonexistent/.rensei/known-agent-authors.json',
+      agentAuthorsConfigPath: '/nonexistent/.donmai/known-agent-authors.json',
       // Provide a config path that won't exist — so agentUserIds is empty by default
       // But authorId=known-bot-id won't be in agentUserIds, so author heuristic won't fire.
       // The title match + description similarity should still score >= 2.
@@ -592,8 +592,8 @@ describe('runCleanupSubIssues — known agent author IDs', () => {
     const { join } = await import('path')
     const { tmpdir } = await import('os')
     const tmpDir = join(tmpdir(), `cleanup-test-${Date.now()}`)
-    mkdirSync(join(tmpDir, '.rensei'), { recursive: true })
-    const configPath = join(tmpDir, '.rensei', 'known-agent-authors.json')
+    mkdirSync(join(tmpDir, '.donmai'), { recursive: true })
+    const configPath = join(tmpDir, '.donmai', 'known-agent-authors.json')
     writeFileSync(configPath, JSON.stringify({ agentUserIds: ['known-bot-uuid'] }))
 
     try {

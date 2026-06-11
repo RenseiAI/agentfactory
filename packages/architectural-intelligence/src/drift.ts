@@ -19,7 +19,7 @@
  *   8. Return a structured `DriftReport`.
  *
  * Threshold gating:
- *   A `DriftGatePolicy` argument (or `RENSEI_DRIFT_GATE` env) decides what
+ *   A `DriftGatePolicy` argument (or `DONMAI_DRIFT_GATE` env) decides what
  *   counts as "blocked":
  *     - 'none'           : never block (informational only)
  *     - 'no-severity-high': block when any deviation is severity='high'
@@ -62,9 +62,9 @@ import {
 /**
  * Controls what counts as "gated" (i.e., blocked) by the drift assessment.
  *
- * Tenant policy can be provided explicitly or read from `RENSEI_DRIFT_GATE`.
+ * Tenant policy can be provided explicitly or read from `DONMAI_DRIFT_GATE`.
  *
- * Environment variable format (RENSEI_DRIFT_GATE):
+ * Environment variable format (DONMAI_DRIFT_GATE):
  *   'none'             → never block
  *   'no-severity-high' → block on any severity='high' deviation
  *   'zero-deviations'  → block on any deviation
@@ -81,13 +81,13 @@ export type DriftGatePolicy =
  *
  * Priority:
  *   1. Explicit `policy` argument.
- *   2. `RENSEI_DRIFT_GATE` environment variable.
+ *   2. `DONMAI_DRIFT_GATE` environment variable.
  *   3. Default: 'no-severity-high'.
  */
 export function resolveDriftGatePolicy(policy?: DriftGatePolicy): DriftGatePolicy {
   if (policy !== undefined) return policy
 
-  const env = process.env['RENSEI_DRIFT_GATE']
+  const env = process.env['DONMAI_DRIFT_GATE']
   if (!env) return 'no-severity-high'
 
   if (env === 'none') return 'none'
@@ -155,7 +155,7 @@ export interface AssessInput {
   projectContext?: string
 
   /**
-   * Threshold gate policy. Falls back to `RENSEI_DRIFT_GATE` env or the
+   * Threshold gate policy. Falls back to `DONMAI_DRIFT_GATE` env or the
    * default policy ('no-severity-high').
    */
   gatePolicy?: DriftGatePolicy
