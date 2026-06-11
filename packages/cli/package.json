@@ -126,7 +126,7 @@
     "@donmai/plugin-linear": "workspace:*",
     "@donmai/server": "workspace:*",
     "@donmai/architectural-intelligence": "workspace:*",
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.4.2"
   },
   "optionalDependencies": {
     "@donmai/code-intelligence": "workspace:*"
