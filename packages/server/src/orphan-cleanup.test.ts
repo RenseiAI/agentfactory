@@ -24,6 +24,7 @@ vi.mock('./worker-storage.js', () => ({
 vi.mock('./work-queue.js', () => ({
   releaseClaim: vi.fn(),
   isSessionInQueue: vi.fn(() => false),
+  getClaimOwner: vi.fn(() => null),
 }))
 
 vi.mock('./issue-lock.js', () => ({
@@ -33,6 +34,13 @@ vi.mock('./issue-lock.js', () => ({
   isSessionParkedForIssue: vi.fn(() => false),
   getIssueLock: vi.fn(() => null),
   releaseIssueLock: vi.fn(),
+}))
+
+// Liveness probes read the heartbeat pointer via redisGet; default to "no
+// pointer" (dead). The session-heartbeat module only contributes the pure
+// key-builder, so it needs no mock.
+vi.mock('./redis.js', () => ({
+  redisGet: vi.fn(async () => null),
 }))
 
 import {
@@ -48,12 +56,20 @@ import {
   type AgentSessionState,
 } from './session-storage.js'
 import { dispatchWork } from './issue-lock.js'
+import { getClaimOwner, isSessionInQueue } from './work-queue.js'
+import { isSessionParkedForIssue } from './issue-lock.js'
+import { redisGet } from './redis.js'
+import { heartbeatRedisKey } from './session-heartbeat.js'
 
 const mockGetAllSessions = vi.mocked(getAllSessions)
 const mockGetSessionState = vi.mocked(getSessionState)
 const mockResetSessionForRequeue = vi.mocked(resetSessionForRequeue)
 const mockUpdateSessionStatus = vi.mocked(updateSessionStatus)
 const mockDispatchWork = vi.mocked(dispatchWork)
+const mockGetClaimOwner = vi.mocked(getClaimOwner)
+const mockIsSessionInQueue = vi.mocked(isSessionInQueue)
+const mockIsSessionParkedForIssue = vi.mocked(isSessionParkedForIssue)
+const mockRedisGet = vi.mocked(redisGet)
 
 const TEN_MINUTES_AGO = () => Date.now() - 10 * 60_000
 
@@ -151,9 +167,16 @@ describe('cleanupOrphanedSessions — stranded per-dispatch rows', () => {
       parked: false,
       replaced: false,
     })
+    // Default: no liveness anywhere (no heartbeat pointer, no claim, not
+    // queued, not parked) — so a stale candidate IS a true strand unless a
+    // test arranges otherwise.
+    mockRedisGet.mockResolvedValue(null)
+    mockGetClaimOwner.mockResolvedValue(null)
+    mockIsSessionInQueue.mockResolvedValue(false)
+    mockIsSessionParkedForIssue.mockResolvedValue(false)
   })
 
-  it('terminal-marks a stranded alias row under its OWN key when the tracker session is terminal', async () => {
+  it('terminal-marks a true-stranded alias row under its OWN key (no liveness, tracker terminal)', async () => {
     const alias = makeAliasRow()
     mockGetAllSessions.mockResolvedValue([alias])
     mockGetSessionState.mockResolvedValue(
@@ -183,7 +206,7 @@ describe('cleanupOrphanedSessions — stranded per-dispatch rows', () => {
     ])
   })
 
-  it('terminal-marks a stranded alias row when the tracker session no longer exists', async () => {
+  it('terminal-marks a true-stranded alias row when the tracker session no longer exists', async () => {
     mockGetAllSessions.mockResolvedValue([makeAliasRow()])
     mockGetSessionState.mockResolvedValue(null)
 
@@ -198,21 +221,123 @@ describe('cleanupOrphanedSessions — stranded per-dispatch rows', () => {
     expect(result.terminalMarked).toBe(1)
   })
 
-  it('leaves a stranded alias row alone while the tracker session is still active', async () => {
-    mockGetAllSessions.mockResolvedValue([makeAliasRow()])
-    mockGetSessionState.mockResolvedValue(
-      makeSession({
-        trackerSessionId: 'tracker-shared',
-        rowSessionId: 'tracker-shared',
-        status: 'running',
-      })
-    )
+  // ── Regression guards: never reap a live session ──────────────────────────
+
+  it('NEVER reaps a live long-running alias row — survives a stale updatedAt when a heartbeat pointer is fresh', async () => {
+    // A real agent running for 10+ minutes: its row updatedAt is stale (the
+    // lifecycle no longer touches it under this id), so it passes the cheap
+    // candidate pre-filter — but its heartbeat pointer was emitted seconds ago.
+    const alias = makeAliasRow({ status: 'running', updatedAt: TEN_MINUTES_AGO() })
+    mockGetAllSessions.mockResolvedValue([alias])
+    // Tracker row was NEVER written under the shared id (the exact prod shape):
+    mockGetSessionState.mockResolvedValue(null)
+    // Live heartbeat pointer under the ROW's own id (where the runner heartbeats).
+    mockRedisGet.mockImplementation(async (key: string) => {
+      if (key === heartbeatRedisKey('dispatch-uuid-1')) {
+        return {
+          sessionId: 'dispatch-uuid-1',
+          workerId: 'wkr-alive',
+          emittedAt: Date.now() - 3_000, // 3s ago — fresh
+        }
+      }
+      return null
+    })
 
     const result = await cleanupOrphanedSessions()
 
     expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
     expect(mockDispatchWork).not.toHaveBeenCalled()
+    expect(mockResetSessionForRequeue).not.toHaveBeenCalled()
     expect(result.terminalMarked).toBe(0)
+    expect(result.orphaned).toBe(0)
+  })
+
+  it('survives indefinitely while heartbeats keep arriving — repeated passes never reap a heartbeating row', async () => {
+    const alias = makeAliasRow({ status: 'running', updatedAt: TEN_MINUTES_AGO() })
+    mockGetAllSessions.mockResolvedValue([alias])
+    mockGetSessionState.mockResolvedValue(null)
+    // Every pass sees a fresh pointer (the worker keeps heartbeating).
+    mockRedisGet.mockImplementation(async (key: string) =>
+      key === heartbeatRedisKey('dispatch-uuid-1')
+        ? { sessionId: 'dispatch-uuid-1', workerId: 'wkr-alive', emittedAt: Date.now() }
+        : null
+    )
+
+    for (let pass = 0; pass < 5; pass++) {
+      const result = await cleanupOrphanedSessions()
+      expect(result.terminalMarked).toBe(0)
+    }
+    expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
+  })
+
+  it('NEVER reaps an alias row whose tracker id holds the live heartbeat (runner heartbeats under the tracker id)', async () => {
+    const alias = makeAliasRow({ status: 'running', updatedAt: TEN_MINUTES_AGO() })
+    mockGetAllSessions.mockResolvedValue([alias])
+    mockGetSessionState.mockResolvedValue(null)
+    mockRedisGet.mockImplementation(async (key: string) =>
+      key === heartbeatRedisKey('tracker-shared')
+        ? { sessionId: 'tracker-shared', workerId: 'wkr-alive', emittedAt: Date.now() }
+        : null
+    )
+
+    const result = await cleanupOrphanedSessions()
+
+    expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
+    expect(result.terminalMarked).toBe(0)
+  })
+
+  it('NEVER reaps an alias row that still holds a live work-claim', async () => {
+    const alias = makeAliasRow({ status: 'claimed', updatedAt: TEN_MINUTES_AGO() })
+    mockGetAllSessions.mockResolvedValue([alias])
+    mockGetSessionState.mockResolvedValue(null)
+    // No heartbeat, but a worker holds the claim.
+    mockGetClaimOwner.mockResolvedValue('wkr-claimed')
+
+    const result = await cleanupOrphanedSessions()
+
+    expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
+    expect(result.terminalMarked).toBe(0)
+  })
+
+  it('ignores a stale (expired-but-present) heartbeat pointer and reaps the true strand', async () => {
+    // Pointer present but emittedAt is well past the live threshold → dead.
+    const alias = makeAliasRow({ status: 'running', updatedAt: TEN_MINUTES_AGO() })
+    mockGetAllSessions.mockResolvedValue([alias])
+    mockGetSessionState.mockResolvedValue(null)
+    mockRedisGet.mockImplementation(async (key: string) =>
+      key === heartbeatRedisKey('dispatch-uuid-1')
+        ? { sessionId: 'dispatch-uuid-1', workerId: 'wkr-dead', emittedAt: TEN_MINUTES_AGO() }
+        : null
+    )
+
+    const result = await cleanupOrphanedSessions()
+
+    expect(mockUpdateSessionStatus).toHaveBeenCalledWith(
+      'dispatch-uuid-1',
+      'stopped',
+      { stoppedReason: expect.stringContaining('no live worker') }
+    )
+    expect(result.terminalMarked).toBe(1)
+  })
+
+  it('reaps a TRUE orphan alias row — no heartbeat, no claim, not queued, not parked (the original phantom case)', async () => {
+    // The original phantom scenario: dispatch died before the runner started, so
+    // the row never got a heartbeat, the claim TTL'd out, and the tracker row
+    // was never written. This is a genuine strand and MUST still be reaped.
+    mockGetAllSessions.mockResolvedValue([
+      makeAliasRow({ status: 'pending', updatedAt: TEN_MINUTES_AGO() }),
+    ])
+    mockGetSessionState.mockResolvedValue(null)
+
+    const result = await cleanupOrphanedSessions()
+
+    expect(mockUpdateSessionStatus).toHaveBeenCalledWith(
+      'dispatch-uuid-1',
+      'stopped',
+      { stoppedReason: expect.stringContaining('no longer exists') }
+    )
+    expect(mockDispatchWork).not.toHaveBeenCalled()
+    expect(result.terminalMarked).toBe(1)
   })
 
   it('never re-queues a running alias row as an orphan, even with no active worker', async () => {
@@ -225,7 +350,7 @@ describe('cleanupOrphanedSessions — stranded per-dispatch rows', () => {
 
     expect(mockResetSessionForRequeue).not.toHaveBeenCalled()
     expect(mockDispatchWork).not.toHaveBeenCalled()
-    // Stranded sweep still reconciles it terminally
+    // No liveness signal → stranded sweep reconciles it terminally
     expect(mockUpdateSessionStatus).toHaveBeenCalledWith(
       'dispatch-uuid-1',
       'stopped',

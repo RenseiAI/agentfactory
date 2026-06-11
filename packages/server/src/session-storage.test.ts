@@ -16,6 +16,7 @@ import {
   updateSessionStatus,
   updateProviderSessionId,
   deleteSessionState,
+  touchSessionHeartbeat,
 } from './session-storage.js'
 import {
   isRedisConfigured,
@@ -359,6 +360,68 @@ describe('session-storage', () => {
       mockRedisDel.mockResolvedValue(0)
       const result = await deleteSessionState('nonexistent')
       expect(result).toBe(false)
+    })
+  })
+
+  describe('touchSessionHeartbeat', () => {
+    it('returns false when Redis is not configured', async () => {
+      mockIsRedisConfigured.mockReturnValue(false)
+      const result = await touchSessionHeartbeat('session-1')
+      expect(result).toBe(false)
+      expect(mockRedisSet).not.toHaveBeenCalled()
+    })
+
+    it('returns false when no row exists under the id', async () => {
+      mockRedisGet.mockResolvedValue(null)
+      const result = await touchSessionHeartbeat('missing')
+      expect(result).toBe(false)
+      expect(mockRedisSet).not.toHaveBeenCalled()
+    })
+
+    it('bumps updatedAt for a live row without changing status', async () => {
+      const before = 1_000_000
+      mockRedisGet.mockResolvedValue({
+        trackerSessionId: 'session-live',
+        trackerProvider: 'linear',
+        issueId: 'issue-1',
+        providerSessionId: null,
+        worktreePath: '/tmp/worktree',
+        status: 'running',
+        createdAt: before,
+        updatedAt: before,
+      })
+
+      const result = await touchSessionHeartbeat('session-live')
+
+      expect(result).toBe(true)
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        'agent:session:session-live',
+        expect.objectContaining({ status: 'running' }),
+        86400
+      )
+      const written = mockRedisSet.mock.calls[0][1] as { updatedAt: number }
+      expect(written.updatedAt).toBeGreaterThan(before)
+    })
+
+    it('refuses to touch a terminal row (never resurrects a dead session)', async () => {
+      for (const status of ['completed', 'failed', 'stopped'] as const) {
+        mockRedisSet.mockClear()
+        mockRedisGet.mockResolvedValue({
+          trackerSessionId: 'session-done',
+          trackerProvider: 'linear',
+          issueId: 'issue-1',
+          providerSessionId: null,
+          worktreePath: '/tmp/worktree',
+          status,
+          createdAt: 1,
+          updatedAt: 1,
+        })
+
+        const result = await touchSessionHeartbeat('session-done')
+
+        expect(result).toBe(false)
+        expect(mockRedisSet).not.toHaveBeenCalled()
+      }
     })
   })
 })

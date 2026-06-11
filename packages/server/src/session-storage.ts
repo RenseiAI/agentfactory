@@ -410,6 +410,57 @@ export async function updateSessionCostData(
 }
 
 /**
+ * Refresh a session row's `updatedAt` to mark it live, without touching status.
+ *
+ * Called from the per-step heartbeat loop so a long-running session keeps its
+ * row fresh while the runner is alive. Without this, a session that runs longer
+ * than the orphan-cleanup staleness threshold (5 min) would have a stale row
+ * `updatedAt` and be mistaken for a strand — the exact regression that reaped
+ * real agent runs at ~5 minutes.
+ *
+ * This is the lifecycle half of the strand-safety fix; the orphan sweep's
+ * heartbeat-pointer probe is the authoritative half. Together they ensure a
+ * live row is never reaped: the row stays fresh AND its liveness is provable.
+ *
+ * Best-effort and cheap: a single GET + SET keyed off the session id. Returns
+ * false (without throwing) when the row is absent or Redis is unconfigured, so
+ * a heartbeat tick is never disturbed by this write.
+ *
+ * @param sessionId - The session ID the worker runs/heartbeats under
+ */
+export async function touchSessionHeartbeat(
+  sessionId: string
+): Promise<boolean> {
+  if (!isRedisConfigured()) {
+    return false
+  }
+
+  const key = buildSessionKey(sessionId)
+  const raw = await redisGet<AgentSessionState>(key)
+  if (!raw) {
+    // No row under this id (e.g. the lifecycle keys off a different id) — the
+    // heartbeat pointer still proves liveness, so this miss is harmless.
+    return false
+  }
+
+  const existing = hydrateSessionState(raw, sessionId)
+
+  // Only refresh non-terminal rows. Touching a terminal row would resurrect a
+  // dead session's freshness and could mask a genuine strand.
+  if (existing.status === 'completed' || existing.status === 'failed' || existing.status === 'stopped') {
+    return false
+  }
+
+  await redisSet(
+    key,
+    { ...existing, updatedAt: Date.now() },
+    SESSION_TTL_SECONDS
+  )
+
+  return true
+}
+
+/**
  * Reset a session for re-queuing after orphan cleanup
  * Clears workerId and resets status to pending so a new worker can claim it
  *

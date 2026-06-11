@@ -5,6 +5,10 @@ vi.mock('./redis.js', () => ({
   redisSet: vi.fn(),
 }))
 
+vi.mock('./session-storage.js', () => ({
+  touchSessionHeartbeat: vi.fn(async () => false),
+}))
+
 import {
   createSessionHeartbeat,
   DEFAULT_SESSION_HEARTBEAT_INTERVAL_MS,

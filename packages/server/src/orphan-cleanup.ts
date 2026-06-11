@@ -21,6 +21,7 @@ import { listWorkers } from './worker-storage.js'
 import {
   releaseClaim,
   isSessionInQueue,
+  getClaimOwner,
   type QueuedWork,
 } from './work-queue.js'
 import {
@@ -31,6 +32,8 @@ import {
   getIssueLock,
   releaseIssueLock,
 } from './issue-lock.js'
+import { heartbeatRedisKey } from './session-heartbeat.js'
+import { redisGet } from './redis.js'
 
 const log = createLogger('orphan-cleanup')
 
@@ -43,6 +46,138 @@ const TERMINAL_STATUSES = new Set<AgentSessionState['status']>([
   'failed',
   'stopped',
 ])
+
+/**
+ * Liveness signal for the heartbeat pointer. A running worker writes
+ * `session:heartbeat:<sessionId>` every 15s with a 60s TTL (ADR Decision 5).
+ * Its mere presence proves a runner is alive RIGHT NOW for that session id,
+ * independent of the session row's `updatedAt` (which is NOT bumped per
+ * heartbeat — a long-running session's row goes stale while the runner is
+ * very much alive). We additionally tolerate clock skew between the heartbeat
+ * emitter and the cleanup host by treating any pointer younger than this
+ * threshold as live; an expired Redis key simply returns null.
+ */
+const HEARTBEAT_LIVE_THRESHOLD_MS = 90_000 // 60s TTL + a tick of grace/skew
+
+interface SessionHeartbeatPointer {
+  sessionId: string
+  workerId: string
+  emittedAt: number
+  stepId?: string
+}
+
+/**
+ * True iff a live worker heartbeat pointer exists for the given session id.
+ *
+ * This is the authoritative "is the runner alive?" probe. The pointer has a
+ * 60s TTL refreshed every 15s, so its presence (and recent `emittedAt`) proves
+ * an in-flight session — even one whose row `updatedAt` is minutes stale. The
+ * sweep MUST consult this before reaping: a long-running real session is
+ * exactly the case the prior implementation mis-reaped.
+ */
+async function hasLiveHeartbeat(sessionId: string): Promise<boolean> {
+  if (!sessionId) return false
+  try {
+    const pointer = await redisGet<SessionHeartbeatPointer>(
+      heartbeatRedisKey(sessionId)
+    )
+    if (!pointer) return false
+    // Defend against a stale-but-not-yet-expired pointer (clock skew, a TTL
+    // that hasn't fired yet): require a recent emit, not just key presence.
+    const age = Date.now() - pointer.emittedAt
+    return age < HEARTBEAT_LIVE_THRESHOLD_MS
+  } catch (err) {
+    // On a Redis read error, fail SAFE: assume live so we never reap a row we
+    // could not prove dead. A true strand is reaped on the next clean pass.
+    log.warn('Heartbeat liveness probe failed; treating as live', {
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return true
+  }
+}
+
+/**
+ * True iff the session has a live worker claim (`work:claim:<sessionId>`), set
+ * with a TTL when a worker claims the work item. A held claim means a worker
+ * is processing (or about to process) this session and the row is NOT stranded.
+ */
+async function hasLiveClaim(sessionId: string): Promise<boolean> {
+  if (!sessionId) return false
+  try {
+    return (await getClaimOwner(sessionId)) !== null
+  } catch (err) {
+    // Fail safe: a probe error must never license a reap.
+    log.warn('Claim liveness probe failed; treating as claimed', {
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return true
+  }
+}
+
+/**
+ * Positively determine that a per-dispatch alias row is TRULY stranded — i.e.
+ * the work it represents is dead and the row can never make progress — so it
+ * is safe to terminal-mark.
+ *
+ * A row is a true strand ONLY when EVERY liveness signal is absent. We probe
+ * BOTH the row's own id (`rowSessionId`) and its `trackerSessionId`, because
+ * the runner heartbeats/claims under whichever id the dispatched work carried;
+ * a live signal on EITHER id means a worker is alive and we must NOT reap.
+ *
+ * Signals checked (any one present ⇒ NOT stranded):
+ *   1. A recent worker heartbeat pointer (the authoritative liveness probe).
+ *   2. A held work-claim key.
+ *   3. The session is still queued in the global work queue.
+ *   4. The session is parked in its issue-pending queue.
+ *
+ * Returns the reason string to record when the row IS stranded, or null when
+ * any liveness signal proves it is still live.
+ */
+async function resolveStrandedReason(
+  session: AgentSessionState
+): Promise<string | null> {
+  const rowId = session.rowSessionId as string
+  const trackerId = session.trackerSessionId
+  const candidateIds = trackerId && trackerId !== rowId ? [rowId, trackerId] : [rowId]
+
+  // 1. Live heartbeat on either id ⇒ a runner is actively working.
+  for (const id of candidateIds) {
+    if (await hasLiveHeartbeat(id)) {
+      return null
+    }
+  }
+
+  // 2. Held claim on either id ⇒ a worker owns this session.
+  for (const id of candidateIds) {
+    if (await hasLiveClaim(id)) {
+      return null
+    }
+  }
+
+  // 3. Still queued (a worker can still pick it up) on either id.
+  for (const id of candidateIds) {
+    if (await isSessionInQueue(id)) {
+      return null
+    }
+  }
+
+  // 4. Parked in the issue-pending queue (awaiting promotion) on either id.
+  for (const id of candidateIds) {
+    if (await isSessionParkedForIssue(session.issueId, id)) {
+      return null
+    }
+  }
+
+  // No liveness signal anywhere — the row is a true strand. Annotate the
+  // reason with the tracker session's terminal/missing state when known.
+  const tracker = trackerId ? await getSessionState(trackerId) : null
+  if (tracker) {
+    return `Stranded per-dispatch row: no live worker; tracker session ${trackerId} is ${tracker.status}`
+  }
+  return `Stranded per-dispatch row: no live worker; tracker session ${trackerId} no longer exists`
+}
 
 /**
  * Check whether a session row is a per-dispatch alias: a row stored under its
@@ -208,17 +343,23 @@ export async function findZombiePendingSessions(): Promise<AgentSessionState[]> 
 }
 
 /**
- * Find stranded per-dispatch rows — alias rows written under their own key
- * whose stored `trackerSessionId` was later patched to a shared tracker
- * session. Since every lifecycle write keys off `trackerSessionId`, these
- * rows never leave their initial status under their own key. Once the
- * tracker-keyed session is terminal (or has expired), the row is permanently
- * stranded: it renders as a phantom queued/parked session and, before this
- * sweep existed, was re-queued on every cleanup pass.
+ * Find CANDIDATE stranded per-dispatch rows — alias rows written under their
+ * own key whose stored `trackerSessionId` points at a shared tracker session.
+ * Since every status write keys off `trackerSessionId`, such a row never leaves
+ * its initial status under its own key; if its work dies before reaching the
+ * runner, the row is left dangling as a phantom queued/parked session.
  *
- * Returns alias rows that are non-terminal and older than the zombie
- * threshold. The caller decides terminality by checking the tracker-keyed
- * session state.
+ * This function returns only *candidates*: alias rows that are non-terminal and
+ * whose row `updatedAt` is older than the zombie threshold. It is deliberately
+ * a cheap pre-filter — it does NOT decide that a row is truly stranded.
+ *
+ * CRITICAL: a stale `updatedAt` does NOT mean dead. A long-running real session
+ * heartbeats via the `session:heartbeat:<id>` pointer every 15s but does NOT
+ * bump its row's `updatedAt`, so its row appears "stale" while the runner is
+ * very much alive. The caller (`cleanupOrphanedSessions` →
+ * `resolveStrandedReason`) is the authority on terminality: it reaps a
+ * candidate ONLY after positively confirming there is no live heartbeat, no
+ * held claim, and no queued/parked entry on either the row id or the tracker id.
  */
 export async function findStrandedDispatchRows(): Promise<AgentSessionState[]> {
   const sessions = await getAllSessions()
@@ -229,7 +370,9 @@ export async function findStrandedDispatchRows(): Promise<AgentSessionState[]> {
     if (!isPerDispatchAliasRow(session)) continue
     if (TERMINAL_STATUSES.has(session.status)) continue
 
-    // Grace period: leave fresh rows alone (dispatch may still be in flight)
+    // Cheap pre-filter: don't even probe rows touched within the grace window
+    // (dispatch may still be in flight). NOTE: passing this filter is NECESSARY
+    // but NOT SUFFICIENT for a reap — liveness is proven in resolveStrandedReason.
     const age = now - session.updatedAt
     if (age < ZOMBIE_PENDING_THRESHOLD_MS) continue
 
@@ -447,42 +590,40 @@ export async function cleanupOrphanedSessions(
       log.error('Failed to find zombie pending sessions', { error: err })
     }
 
-    // Terminal-mark stranded per-dispatch rows under their OWN key.
-    // These rows alias a shared tracker session; when the tracker-keyed state
-    // is terminal or missing the alias can never progress, so stop it here
-    // instead of letting it strand as a phantom forever.
+    // Terminal-mark TRULY-stranded per-dispatch rows under their OWN key.
+    // A candidate alias row is reaped ONLY after resolveStrandedReason proves
+    // there is no live worker for it (no recent heartbeat, no held claim, not
+    // queued, not parked) on EITHER the row id or the tracker id. This is the
+    // load-bearing guard: a live long-running session heartbeats every 15s but
+    // does NOT bump its row's updatedAt, so without this probe it would be
+    // mis-reaped at ~5 minutes — the regression this sweep previously caused.
     try {
-      const stranded = await findStrandedDispatchRows()
+      const candidates = await findStrandedDispatchRows()
 
-      if (stranded.length > 0) {
-        log.info('Found stranded per-dispatch session rows', {
-          count: stranded.length,
+      if (candidates.length > 0) {
+        log.info('Probing stranded per-dispatch row candidates', {
+          count: candidates.length,
         })
       }
 
-      for (const session of stranded) {
+      for (const session of candidates) {
         // findStrandedDispatchRows guarantees rowSessionId is set
         const rowSessionId = session.rowSessionId as string
         const issueIdentifier =
           session.issueIdentifier || session.issueId.slice(0, 8)
 
         try {
-          const tracker = await getSessionState(session.trackerSessionId)
+          const stoppedReason = await resolveStrandedReason(session)
 
-          if (tracker && !TERMINAL_STATUSES.has(tracker.status)) {
-            // Tracker session is still live — it owns the lifecycle. The
-            // alias row converges on a later pass once the tracker finishes.
-            log.debug('Stranded row tracker session still active, skipping', {
+          if (stoppedReason === null) {
+            // A liveness signal proves the row is still live — leave it. It
+            // converges on a later pass once the runner actually finishes.
+            log.debug('Stranded candidate still live, skipping', {
               rowSessionId,
               trackerSessionId: session.trackerSessionId,
-              trackerStatus: tracker.status,
             })
             continue
           }
-
-          const stoppedReason = tracker
-            ? `Stranded per-dispatch row: tracker session ${session.trackerSessionId} is ${tracker.status}`
-            : `Stranded per-dispatch row: tracker session ${session.trackerSessionId} no longer exists`
 
           const marked = await updateSessionStatus(rowSessionId, 'stopped', {
             stoppedReason,
@@ -501,7 +642,7 @@ export async function cleanupOrphanedSessions(
               rowSessionId,
               trackerSessionId: session.trackerSessionId,
               issueIdentifier,
-              trackerStatus: tracker?.status ?? 'missing',
+              reason: stoppedReason,
             })
           }
         } catch (err) {
