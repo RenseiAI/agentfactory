@@ -14,7 +14,7 @@ import type { ParallelismGroupDefinition } from './workflow-types.js'
 export interface ParallelTask {
   /** Unique task identifier (typically the issue identifier) */
   id: string
-  /** Issue identifier (e.g., "SUP-123") */
+  /** Issue identifier (e.g., "ABC-123") */
   issueId: string
   /** Phase name this task belongs to */
   phaseName: string

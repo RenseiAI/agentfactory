@@ -3,11 +3,10 @@
  *
  * Reads legacy `projectPaths` overrides from a RepositoryConfig and
  * synthesizes in-memory KitManifest objects so the kit composition pipeline
- * (REN-1288) sees them.  Consumers do NOT need to migrate their
+ * sees them.  Consumers do NOT need to migrate their
  * config files — they get equivalent agent behavior automatically.
  *
- * Architecture reference: rensei-architecture/005-kit-manifest-spec.md
- * Linear: REN-1294
+ * Architecture reference: donmai-architecture/005-kit-manifest-spec.md
  */
 
 import type { RepositoryConfig, ProjectConfig } from './repository-config.js'

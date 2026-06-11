@@ -1,8 +1,8 @@
 /**
  * Layer 6 Hook Bus — typed pub/sub for ProviderHookEvent
  *
- * Architecture reference: rensei-architecture/002-provider-base-contract.md §Lifecycle hooks
- * Architecture reference: rensei-architecture/001-layered-execution-model.md §Layer 6
+ * Architecture reference: donmai-architecture/002-provider-base-contract.md §Lifecycle hooks
+ * Architecture reference: donmai-architecture/001-layered-execution-model.md §Layer 6
  *
  * Design decisions:
  * - Bus is typed on ProviderHookEvent from base.ts (no type re-declaration here).

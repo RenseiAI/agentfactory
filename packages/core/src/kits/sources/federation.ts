@@ -10,7 +10,7 @@
  * lower-priority sources. Conflict resolution follows scope precedence
  * then the `priority` field within the same source.
  *
- * Architecture reference: rensei-architecture/005-kit-manifest-spec.md
+ * Architecture reference: donmai-architecture/005-kit-manifest-spec.md
  * §Registry sources — "Federation order is the discovery order."
  */
 

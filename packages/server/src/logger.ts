@@ -17,7 +17,7 @@ export interface LogContext {
   sessionId?: string
   /** Linear issue ID */
   issueId?: string
-  /** Linear issue identifier (e.g., SUP-123) */
+  /** Linear issue identifier (e.g., ABC-123) */
   issueIdentifier?: string
   /** Linear workspace/organization ID */
   workspaceId?: string

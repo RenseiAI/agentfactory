@@ -2,14 +2,14 @@
  * Workarea — Git worktree management
  *
  * Plain functions for creating, validating, and removing git worktrees.
- * Extracted from orchestrator.ts (REN-1284) to scaffold the WorkareaProvider
- * interface described in 003-workarea-provider.md (REN-1280).
+ * Extracted from orchestrator.ts to scaffold the WorkareaProvider
+ * interface described in 003-workarea-provider.md.
  *
  * These are intentionally plain functions (not yet behind the WorkareaProvider
  * contract) so they can be consumed by the orchestrator today and migrated to the
  * provider interface incrementally.
  *
- * Public typed API (REN-1285):
+ * Public typed API:
  *   addWorktree(repo, ref, path)  → AddWorktreeResult
  *   removeWorktree(path)          → RemoveWorktreeResult   (typed overload)
  *   listWorktrees(cwd?)           → ListWorktreesResult
@@ -655,7 +655,7 @@ export function handleBranchConflict(
 // ---------------------------------------------------------------------------
 
 export interface CreateWorktreeOptions {
-  /** Issue identifier, e.g. "SUP-294" */
+  /** Issue identifier, e.g. "ABC-294" */
   issueIdentifier: string
   workType: AgentWorkType
   /** Template such as '../{repoName}.wt' */
@@ -1093,12 +1093,12 @@ export function configureMergiraf(worktreePath: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Typed public API (REN-1285)
+// Typed public API
 // ---------------------------------------------------------------------------
 
 /**
  * Paths that must never be used as worktree targets.
- * Rejects: main repo root, anything inside rensei-architecture/, anything under runs/.
+ * Rejects: main repo root, anything inside donmai-architecture/, anything under runs/.
  */
 function isProtectedPath(targetPath: string): boolean {
   const normalized = resolve(targetPath)
@@ -1115,9 +1115,9 @@ function isProtectedPath(targetPath: string): boolean {
     }
   }
 
-  // Guard: inside rensei-architecture/
+  // Guard: inside donmai-architecture/
   const parts = normalized.replace(/\\/g, '/').split('/')
-  if (parts.includes('rensei-architecture')) {
+  if (parts.includes('donmai-architecture')) {
     return true
   }
 

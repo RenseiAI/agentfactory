@@ -201,7 +201,7 @@ const CONTRACTS: Record<string, CompletionContract> = {
   },
   acceptance: {
     workType: 'acceptance',
-    // REN-1153: acceptance must produce BOTH a pass/fail decision AND a
+    // acceptance must produce BOTH a pass/fail decision AND a
     // resolution for the PR (merged directly, or handed to the local merge
     // queue). Prior contract only required workResult, so an agent could
     // emit WORK_RESULT:passed, skip the merge, and the issue would auto-

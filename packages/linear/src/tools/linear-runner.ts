@@ -279,7 +279,7 @@ async function updateIssue(
     if (options.parentId === null) {
       updateData.parentId = null
     } else {
-      // Resolve identifier (e.g., "SUP-123") to UUID
+      // Resolve identifier (e.g., "ABC-123") to UUID
       const parentIssue = await client.getIssue(options.parentId)
       updateData.parentId = parentIssue.id
     }

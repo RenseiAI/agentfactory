@@ -11,7 +11,7 @@
  * Consumer group: inbox-readers
  * Consumer name: worker:{workerId}
  *
- * Key rule: Inbox messages do NOT trigger work assignments (Rule 1 from SUP-1163).
+ * Key rule: Inbox messages do NOT trigger work assignments (Rule 1 from).
  * Workers pull messages on their own poll schedule.
  */
 

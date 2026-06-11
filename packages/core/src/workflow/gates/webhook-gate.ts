@@ -7,7 +7,7 @@
  * CI/CD pipelines, and other services.
  *
  * This module handles the evaluation and state management logic only.
- * The actual HTTP endpoint registration happens in the server layer (SUP-1299).
+ * The actual HTTP endpoint registration happens in the server layer.
  */
 
 import { randomBytes, timingSafeEqual } from 'node:crypto'

@@ -1,7 +1,7 @@
 /**
  * GitHubVCSProvider — OSS GitHub adapter
  *
- * Architecture reference: rensei-architecture/008-version-control-providers.md
+ * Architecture reference: donmai-architecture/008-version-control-providers.md
  *
  * Implements VersionControlProvider using:
  *   - `git` CLI for clone, recordChange (stage+commit), push, pull
@@ -14,7 +14,7 @@
  *   X-Rensei-Workarea-Snapshot: <ref>
  *   X-Rensei-Model: anthropic/claude-opus-4-7
  *
- * For real Ed25519 signing (provenanceNative: true tenants) see REN-1314.
+ * For real Ed25519 signing (provenanceNative: true tenants) see.
  */
 
 import { exec as execCb } from 'child_process'
@@ -399,7 +399,7 @@ export class GitHubVCSProvider implements VersionControlProvider {
    * Attest a change with provenance metadata.
    *
    * For git: creates an empty attestation commit with all provenance trailers.
-   * This stub uses Ed25519 signing scaffolding; real signing is REN-1314.
+   * This stub uses Ed25519 signing scaffolding; real signing is.
    */
   async attest(ws: Workspace, sessionMetadata: SessionAttestation): Promise<AttestationRef> {
     const cwd = ws.path

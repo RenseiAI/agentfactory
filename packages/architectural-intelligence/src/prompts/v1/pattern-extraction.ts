@@ -1,10 +1,10 @@
 /**
  * Architectural Intelligence — Pattern Extraction Prompt (v1)
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Architectural Intelligence" — Synthesis prompts
  *
- * REN-1325: This prompt drives LLM synthesis of raw ArchObservation streams
+ * This prompt drives LLM synthesis of raw ArchObservation streams
  * into structured ArchitecturalPattern nodes.
  *
  * Design:

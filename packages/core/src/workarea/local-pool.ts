@@ -1,8 +1,8 @@
 /**
- * WorkareaProvider — local-pool implementation (REN-1280)
+ * WorkareaProvider — local-pool implementation
  *
  * Implements WorkareaProvider<'workarea'> for the local-machine case.
- * Architecture reference: rensei-architecture/003-workarea-provider.md
+ * Architecture reference: donmai-architecture/003-workarea-provider.md
  *
  * Acquire fast path (< 5s p95 when warm):
  *   1. Find a `ready` pool member matching (repository, toolchainKey).

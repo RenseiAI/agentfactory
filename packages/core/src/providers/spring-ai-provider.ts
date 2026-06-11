@@ -213,7 +213,7 @@ export class SpringAiProvider implements AgentProvider {
     supportsCodeIntelligenceEnforcement: false,
     toolPermissionFormat: 'spring-ai' as const,
     emitsSubagentEvents: false,
-    // REN-1245: Spring AI has no per-step reasoning-effort knob; the
+    // Spring AI has no per-step reasoning-effort knob; the
     // dispatch path will drop the value and emit a Layer-6 warning.
     supportsReasoningEffort: false,
     humanLabel: 'Spring AI',

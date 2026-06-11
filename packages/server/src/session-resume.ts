@@ -1,7 +1,7 @@
 /**
- * Session Resume — REN-1398 (Decision 4)
+ * Session Resume (Decision 4)
  *
- * Reads journal entries (REN-1397) for a session and computes the
+ * Reads journal entries for a session and computes the
  * "resume marker" — the latest checkpointed step.  Workers consult
  * this on start-up: any step whose journal entry already shows
  * `completed` is skipped on replay; the next step that should run is
@@ -9,9 +9,9 @@
  * the checkpoint.
  *
  * Architecture references:
- *   - rensei-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
+ *   - donmai-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
  *     (commit 56f2bc6) — Decision 4 (Resume).
- *   - REN-1397 — `listSessionJournal(sessionId)` is the consumed API.
+ *   - `listSessionJournal(sessionId)` is the consumed API.
  *
  * Design contract:
  *   - The resume marker is purely the journal-derived view; the

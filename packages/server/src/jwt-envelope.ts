@@ -1,20 +1,20 @@
 /**
- * JWT Envelope — REN-1399 (Decision 6)
+ * JWT Envelope (Decision 6)
  *
  * Tenant-scoping enforcement for queue-borne work.  At enqueue time
  * the dispatcher injects a JWT envelope `{ proj, org, sub, claims }`
  * onto the QueuedWork metadata; at consume time the worker re-verifies
- * the signature against the trust anchor (REN-1314 sigstore-verified
+ * the signature against the trust anchor (sigstore-verified
  * issuer set) and compares the `org` claim against its own
  * registration's org context.  Org-mismatch → emit a
  * `session.permission-denied` audit event and reject the work item
  * before any tools fire.
  *
  * Architecture references:
- *   - rensei-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
+ *   - donmai-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
  *     (commit 56f2bc6) — Decision 6 (tenant-scoping JWT envelope).
- *   - REN-1314 — sigstore trust anchor (the issuer set we trust).
- *   - REN-409 cluster + ADR-2026-04-28-sandbox-capabilities-in-types.md —
+ *   - sigstore trust anchor (the issuer set we trust).
+ *   - ADR-2026-04-28-sandbox-capabilities-in-types.md —
  *     Cedar policy fires on the Layer 6 `pre-verb` hook for cross-cutting
  *     enforcement.  This module only implements the *envelope* check;
  *     Cedar lives in the platform repo.
@@ -24,7 +24,7 @@
  *     verifier supports HS256 (shared-secret, used in tests + when
  *     `WORKER_JWT_HMAC_KEY` is set) and RS256/ES256 (PEM public keys
  *     from the trust-anchor allowlist).  This matches the SigstoreVerifier
- *     pattern already shipped in REN-1314.
+ *     pattern already shipped earlier.
  *   - The JWT format is compact JWS (header.payload.signature), base64url
  *     encoded.  We do not implement JWE, JWK, or nested tokens.
  *   - Failures produce a structured `JwtVerificationResult` with `reason`
@@ -76,7 +76,7 @@ export interface TenantJwtClaims {
 
 export interface JwtVerificationOptions {
   /**
-   * Trusted issuer allowlist (REN-1314 sigstore-verified).  The JWT's
+   * Trusted issuer allowlist (sigstore-verified).  The JWT's
    * `iss` claim must be a member.  Empty array = reject all (fail-closed).
    */
   trustedIssuers: string[]
@@ -95,7 +95,7 @@ export interface JwtVerificationOptions {
   /**
    * Map of issuer → PEM public key (RS256/ES256).  When the JWT's
    * `iss` matches a key here, the corresponding PEM is used for
-   * verification.  Sourced from the REN-1314 trust anchor in production.
+   * verification.  Sourced from the trust anchor in production.
    */
   issuerPublicKeys?: Record<string, string>
   /**
@@ -168,7 +168,7 @@ export function verifyTenantEnvelope(
     return { valid: false, reason: 'jwt-signature-invalid' }
   }
 
-  // --- Issuer allowlist (REN-1314 trust anchor) ---
+  // --- Issuer allowlist (trust anchor) ---
   if (typeof payload.iss !== 'string' || !options.trustedIssuers.includes(payload.iss)) {
     return {
       valid: false,

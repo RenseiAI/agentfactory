@@ -62,13 +62,13 @@ export interface LocalMergeQueueStorage {
 }
 
 /**
- * Pull a Linear-style issue identifier (e.g. "REN-1153", "SUP-42") out of a
+ * Pull a Linear-style issue identifier (e.g. "ABC-1153", "ABC-42") out of a
  * branch name or PR title. Returns null if no match.
  *
  * Matches:
- *   - "REN-1153" (bare branch)
- *   - "REN-1153: short title" (PR title prefix)
- *   - "feature/REN-1153-cedar-stuff" (branch with prefix)
+ *   - "ABC-1153" (bare branch)
+ *   - "ABC-1153: short title" (PR title prefix)
+ *   - "feature/ABC-1153-cedar-stuff" (branch with prefix)
  *   - "ren-1153" (lowercase, normalized to upper)
  *
  * Exported for testing.
@@ -145,7 +145,7 @@ export class LocalMergeQueueAdapter implements MergeQueueAdapter {
       // Resolve the originating issue identifier so the merge worker can
       // bubble results back to the right ticket. Convention: agents create
       // branches and PR titles prefixed with the issue identifier
-      // (e.g., branch "REN-1153", title "REN-1153: Cedar-Gated …").
+      // (e.g., branch "ABC-1153", title "ABC-1153: Cedar-Gated …").
       // Falls back to PR-N when neither yields a parseable identifier.
       issueIdentifier:
         extractIssueIdentifier(sourceBranch) ??

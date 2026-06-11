@@ -1,5 +1,5 @@
 /**
- * Cooperative Step Runner — REN-1398 (Decision 4)
+ * Cooperative Step Runner (Decision 4)
  *
  * Wraps a session's step loop with the cancel/resume contract from the
  * long-running runtime substrate ADR.  Per step:
@@ -9,7 +9,7 @@
  *      escalate observation when the step explicitly declared a
  *      checkpoint primitive; `interrupt: 'unsafe'` kills the worker
  *      subprocess when the step is also marked `idempotent`.
- *   2. Write a `running` journal entry (REN-1397) before invoking the
+ *   2. Write a `running` journal entry before invoking the
  *      step body.
  *   3. Run the step body; on success write `completed` (and the
  *      step's content-addressable output pointer); on error write
@@ -18,10 +18,10 @@
  *      emit `session.cancelled` and terminate the loop.
  *
  * Architecture references:
- *   - rensei-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
+ *   - donmai-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
  *     (commit 56f2bc6) — Decision 4 (Cooperative cancel; per-step
  *     interrupt config).
- *   - REN-1397 — `writeJournalEntry` / `computeIdempotencyHash` are the
+ *   - `writeJournalEntry` / `computeIdempotencyHash` are the
  *     consumed APIs.
  *
  * Design notes:

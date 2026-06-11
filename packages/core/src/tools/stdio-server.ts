@@ -1,5 +1,5 @@
 /**
- * MCP Stdio Server Abstraction Layer (SUP-1743)
+ * MCP Stdio Server Abstraction Layer
  *
  * Converts ToolPlugin instances into standalone @modelcontextprotocol/sdk
  * McpServer processes using stdio transport. This allows MCP clients like

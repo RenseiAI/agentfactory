@@ -347,14 +347,14 @@ STRUCTURED RESULT MARKER (REQUIRED):
       break
 
     case 'operational-scanner-vercel':
-      // PM agent (012 Archetype 6 — Operational Scanner, Vercel variant). REN-1328.
+      // PM agent (012 Archetype 6 — Operational Scanner, Vercel variant)..
       // The TemplateRegistry-based prompt is the canonical path; this legacy
       // function is a fallback for environments that haven't migrated to templates.
-      // NOTE: Live Vercel binding is mocked pending REN-1311 (RenseiVercelPlugin).
+      // NOTE: Live Vercel binding is mocked pending a Vercel plugin.
       basePrompt = `Run Vercel operational scan.
 
 WORKFLOW:
-1. Query Vercel deploy logs for the configured time window (mock source pending REN-1311).
+1. Query Vercel deploy logs for the configured time window (mock source pending).
 2. Cluster by failure type: deploy failures, function timeouts, cold-start regressions.
 3. Dedupe against existing Linear issues (search by vercel-deploy-id).
 4. For each new cluster: create a standalone bug-report issue with provenance tags.
@@ -368,7 +368,7 @@ ${WORK_RESULT_MARKER_INSTRUCTION}`
       break
 
     case 'operational-scanner-audit':
-      // PM agent (012 Archetype 6 — Operational Scanner, Audit variant). REN-1328.
+      // PM agent (012 Archetype 6 — Operational Scanner, Audit variant)..
       // The TemplateRegistry-based prompt is the canonical path; this fallback
       // is for environments that haven't migrated to templates.
       basePrompt = `Run audit-chain operational scan.
@@ -388,7 +388,7 @@ ${WORK_RESULT_MARKER_INSTRUCTION}`
       break
 
     case 'operational-scanner-ci':
-      // PM agent (012 Archetype 6 — Operational Scanner, CI variant). REN-1328.
+      // PM agent (012 Archetype 6 — Operational Scanner, CI variant)..
       // The TemplateRegistry-based prompt is the canonical path; this fallback
       // is for environments that haven't migrated to templates.
       basePrompt = `Run CI operational scan.

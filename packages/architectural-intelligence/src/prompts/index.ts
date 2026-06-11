@@ -1,10 +1,10 @@
 /**
  * Architectural Intelligence — Prompt Registry
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Architectural Intelligence" — Synthesis prompts
  *
- * REN-1325: Central registry for all versioned synthesis prompts.
+ * Central registry for all versioned synthesis prompts.
  *
  * Prompt versioning:
  * - Prompts live in versioned directories (v1/, v2/, etc.).

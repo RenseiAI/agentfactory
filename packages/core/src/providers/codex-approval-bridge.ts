@@ -1,5 +1,5 @@
 /**
- * Codex Approval Bridge (SUP-1747)
+ * Codex Approval Bridge
  *
  * Evaluates Codex App Server `requestApproval` events against deny patterns
  * ported from Claude's `autonomousCanUseTool` callback (claude-provider.ts:33-112).

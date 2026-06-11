@@ -6,7 +6,7 @@
  * follow the same path:
  *
  * 1. **Bundle mode** (production): signatureValue is base64(JSON sigstore bundle).
- *    `@sigstore/verify` is now a regular dependency (REN-1344), so this is the
+ *    `@sigstore/verify` is now a regular dependency, so this is the
  *    default-active path whenever a sigstore-algorithm signature is presented.
  *
  * 2. **Test mode**: signatureValue starts with 'SIGSTORE_TEST:'.
@@ -42,7 +42,7 @@ type SigstoreVerifyModule = {
  * verifier remains tree-shake-friendly and degrades gracefully if a future
  * environment lacks the package (e.g. a stripped-down distribution).
  *
- * REN-1344: package is now a *regular* dependency, so this should always
+ * package is now a *regular* dependency, so this should always
  * resolve in production. The graceful-fallback path below remains for
  * defense in depth and clean error reporting.
  */
@@ -95,7 +95,7 @@ async function tryVerifyWithSigstorePackage(
     const signedEntity = toSignedEntity(bundle)
     // The verifier API varies between @sigstore/verify versions.
     // We use a permissive policy here — full trust enforcement happens at
-    // the trusted-issuer-set layer in the plugin loader (REN-1344).
+    // the trusted-issuer-set layer in the plugin loader.
     const verifierInstance = new SigstoreVerifierClass({})
     verifierInstance.verify(signedEntity, artifactBytes)
 
@@ -134,12 +134,12 @@ export class SigstoreVerifier implements Verifier {
       return packageResult
     }
 
-    // @sigstore/verify did not load — should not happen post-REN-1344
+    // @sigstore/verify did not load — should not happen after the dependency promotion
     // since it's now a regular dep, but we keep a clear actionable error.
     return {
       valid: false,
       reason:
-        '@sigstore/verify package failed to load. As of REN-1344 this package ' +
+        '@sigstore/verify package failed to load. This package ' +
         'is a regular dependency of @donmai/core; reinstall dependencies ' +
         'with `pnpm install`. ' +
         'Alternatively, use signatureValue starting with "SIGSTORE_TEST:" for tests, ' +

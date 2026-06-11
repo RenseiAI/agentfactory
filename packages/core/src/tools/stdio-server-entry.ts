@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Stdio MCP Server Entry Point (SUP-1743)
+ * Stdio MCP Server Entry Point
  *
  * This file is spawned as a child process by the orchestrator.
  * It receives a PluginBootstrap message on stdin, then starts an

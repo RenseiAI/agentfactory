@@ -49,7 +49,7 @@ function makeTools(apiKey?: string, teamName?: string, proxyUrl?: string, proxyA
     tool(
       'af_linear_get_issue',
       'Get a Linear issue by ID or identifier',
-      { issue_id: z.string().describe('Issue ID or identifier (e.g. SUP-123)') },
+      { issue_id: z.string().describe('Issue ID or identifier (e.g., ABC-123)') },
       async (args) => run('get-issue', {}, [args.issue_id])
     ),
 

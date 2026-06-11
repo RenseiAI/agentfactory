@@ -196,7 +196,7 @@ export interface MergeWorkerDeps {
    * the existing rebase/test/push pipeline runs unconditionally. This preserves
    * backward compatibility for callers that do not configure a VCS provider.
    *
-   * See: rensei-architecture/008-version-control-providers.md §Merge queue logic
+   * See: donmai-architecture/008-version-control-providers.md §Merge queue logic
    */
   vcsProvider?: VersionControlProvider
 }
@@ -493,14 +493,14 @@ export class MergeWorker {
       // Once the first dequeue merges + deletes the source branch, every
       // subsequent dequeue would crash in `prepare()` with "couldn't find
       // remote ref" and bubble a spurious Rejected status to the issue —
-      // exactly the failure mode that took out REN-1165.
+      // exactly the failure mode that took out.
       //
       // We treat any non-OPEN state as already-handled and short-circuit
       // with `noop` so the queue advances without re-running bubble-up.
       // No-op when `getPRState` is unwired — keeps non-GitHub deployments
       // working as before.
       //
-      // 0a. Local marker first (REN-1166). The success path writes
+      // 0a. Local marker first. The success path writes
       // `merge:completed:<repo>:<pr>` to Redis with a short TTL. This is
       // authoritative regardless of GitHub's PR-state propagation, which
       // can lag the merge by several seconds and let a duplicate dequeue
@@ -563,7 +563,7 @@ export class MergeWorker {
         // the remote — almost always because a previous successful merge
         // for this PR already deleted it. Treat as `noop` so the queue
         // advances quietly instead of bubbling Rejected on a PR that
-        // actually merged cleanly. (REN-1166: belt-and-braces with the
+        // actually merged cleanly. (belt-and-braces with the
         // local marker check above — covers the case where the marker has
         // expired or was lost across worker restarts.)
         if (prepareResult.alreadyMerged) {
@@ -700,7 +700,7 @@ export class MergeWorker {
       // source branch before that detection runs, GitHub processes the
       // branch-delete first and closes the PR with `state: CLOSED,
       // mergedAt: null` — `git log main` then looks like a series of
-      // direct-to-main commits with no associated PR (the REN-1165
+      // direct-to-main commits with no associated PR (the prior
       // failure mode).
       //
       // Polling getPRState until the PR is MERGED is a defensive sleep

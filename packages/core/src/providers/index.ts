@@ -30,7 +30,7 @@
 
 // Provider base contract — unified Provider<F> interface and ProviderHookEvent taxonomy
 // Note: SandboxProviderCapabilities is intentionally omitted here — the canonical
-// extended version (18-field struct, REN-1281) is re-exported below from ./types.js.
+// extended version (18-field struct,) is re-exported below from ./types.js.
 export type {
   ProviderFamily,
   ProviderHealth,
@@ -153,7 +153,7 @@ export { AmpProvider, createAmpProvider } from './amp-provider.js'
 export { SpringAiProvider, createSpringAiProvider } from './spring-ai-provider.js'
 export { A2aProvider, createA2aProvider } from './a2a-provider.js'
 
-// REN-1245: per-step reasoning-effort dispatch gate
+// per-step reasoning-effort dispatch gate
 export { applyReasoningEffort } from './reasoning-effort-dispatch.js'
 export type { ReasoningEffortDecision, ApplyReasoningEffortOptions } from './reasoning-effort-dispatch.js'
 

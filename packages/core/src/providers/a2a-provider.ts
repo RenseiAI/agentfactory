@@ -508,7 +508,7 @@ export class A2aProvider implements AgentProvider {
     needsPermissionConfig: false,
     supportsCodeIntelligenceEnforcement: false,
     emitsSubagentEvents: false,
-    // REN-1245: A2A is a remote-agent transport; the local dispatch path
+    // A2A is a remote-agent transport; the local dispatch path
     // doesn't translate reasoning-effort hints to a peer-side knob today.
     supportsReasoningEffort: false,
     humanLabel: 'A2A',

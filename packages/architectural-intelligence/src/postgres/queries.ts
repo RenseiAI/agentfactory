@@ -137,7 +137,7 @@ export async function queryArchView(
   }
 
   if (spec.includeActiveDrift) {
-    // Placeholder — REN-1326 drift detection lives in drift.ts and is
+    // Placeholder — drift detection lives in drift.ts and is
     // adapter-agnostic; surfacing it here would require a ModelAdapter
     // injection that's out-of-scope for the data-layer impl. Consumers
     // requesting drift call `assess()` separately, mirroring how the

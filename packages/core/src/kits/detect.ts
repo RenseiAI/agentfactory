@@ -17,7 +17,7 @@
  * Detection output for each kit:
  *   { applies, confidence, reason, toolchain? }
  *
- * Architecture reference: rensei-architecture/005-kit-manifest-spec.md
+ * Architecture reference: donmai-architecture/005-kit-manifest-spec.md
  */
 
 import { spawn } from 'node:child_process'

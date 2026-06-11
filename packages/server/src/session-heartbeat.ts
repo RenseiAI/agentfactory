@@ -1,5 +1,5 @@
 /**
- * Session Heartbeat Emitter — REN-1399 (Decision 5)
+ * Session Heartbeat Emitter (Decision 5)
  *
  * Drives the 15s step-level heartbeat loop a worker maintains while a
  * session has an in-flight step.  Each tick fires a
@@ -9,9 +9,9 @@
  * cheaply check liveness without a Postgres round-trip.
  *
  * Architecture references:
- *   - rensei-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
+ *   - donmai-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
  *     (commit 56f2bc6) — Decision 5 (15s cadence; 60s stale threshold).
- *   - rensei-architecture/001-layered-execution-model.md §Layer 6 —
+ *   - donmai-architecture/001-layered-execution-model.md §Layer 6 —
  *     hook bus emission contract.
  *
  * Lifecycle:
@@ -65,7 +65,7 @@ export function getHeartbeatIntervalMs(): number {
 
 /**
  * Redis key shape for the fast-path pointer.  Mirrors the journal-key
- * shape established in REN-1397 for visual consistency.
+ * shape established earlier for visual consistency.
  */
 export function heartbeatRedisKey(sessionId: string): string {
   return `session:heartbeat:${sessionId}`

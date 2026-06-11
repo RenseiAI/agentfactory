@@ -1,5 +1,5 @@
 /**
- * Trusted Issuer Set — REN-1344
+ * Trusted Issuer Set
  *
  * The trusted issuer list is the bridge between the cryptographic
  * verification layer (sigstore / cosign / minisign / ed25519) and the
@@ -35,14 +35,14 @@
  * - `strict`: unsigned plugins are rejected. Signed plugins must match the
  *   trusted-issuer set. Suitable for SaaS Standard and Enterprise.
  *
- * The trust mode shipped in REN-1314 (`signed-by-allowlist`, `attested`)
+ * The trust mode shipped earlier (`signed-by-allowlist`, `attested`)
  * remains the lower-level provider-base concept; this module's
  * `permissive | strict` modes are the *plugin-loader-level* policy gate
  * exposed in 015-plugin-spec §Auth + trust.
  *
  * Architecture references:
- *   - rensei-architecture/015-plugin-spec.md §Auth + trust
- *   - rensei-architecture/002-provider-base-contract.md §Signing and trust
+ *   - donmai-architecture/015-plugin-spec.md §Auth + trust
+ *   - donmai-architecture/002-provider-base-contract.md §Signing and trust
  */
 
 import type { PluginManifest, PluginSignature } from './manifest.js'

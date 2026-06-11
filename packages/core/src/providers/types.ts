@@ -14,7 +14,7 @@
 // ---------------------------------------------------------------------------
 // SandboxProviderCapabilities — typed capability matrix for sandbox providers
 //
-// Architecture reference: rensei-architecture/004-sandbox-capability-matrix.md
+// Architecture reference: donmai-architecture/004-sandbox-capability-matrix.md
 //
 // Every sandbox provider declares this struct so the scheduler can reason
 // about capability flags without loading provider implementations.
@@ -248,7 +248,7 @@ export interface AgentProviderCapabilities {
    */
   emitsSubagentEvents: boolean
   /**
-   * REN-1245: whether the provider honors the per-step `effort` value on
+   * whether the provider honors the per-step `effort` value on
    * AgentSpawnConfig (`low | medium | high | xhigh`). When true, the dispatch
    * path forwards the value to the provider's native reasoning-effort knob
    * (Claude: `effort` option; Codex/OpenAI: `model_reasoning_effort` /
@@ -364,7 +364,7 @@ export interface AgentSpawnConfig {
    */
   maxTurns?: number
   /**
-   * Stdio MCP server configurations for Codex provider (SUP-1744).
+   * Stdio MCP server configurations for Codex provider.
    * Created by ToolRegistry.createStdioServerConfigs() from registered plugins.
    * Passed to Codex app-server via config/batchWrite so it can spawn and
    * connect to these tool servers.
@@ -376,14 +376,14 @@ export interface AgentSpawnConfig {
     env?: Record<string, string>
   }>
   /**
-   * Persistent system instructions for Codex App Server (SUP-1746).
+   * Persistent system instructions for Codex App Server.
    * Passed via `instructions` on `thread/start`. Contains safety rules,
    * project instructions (AGENTS.md), and work-type context.
    * Separate from `prompt` which contains only the task-specific directive.
    */
   baseInstructions?: string
   /**
-   * Structured permission config for Codex approval bridge (SUP-1748).
+   * Structured permission config for Codex approval bridge.
    * Translates template `tools.allow` / `tools.disallow` into patterns
    * consumed by the approval bridge for runtime tool evaluation.
    */

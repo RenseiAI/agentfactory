@@ -1,11 +1,11 @@
 /**
- * Workarea module — scaffolding for WorkareaProvider (REN-1280)
+ * Workarea module — scaffolding for WorkareaProvider
  *
  * Exposes plain functions for git-worktree management and dependency linking.
  * These are consumed by the orchestrator today and will be migrated behind the
- * WorkareaProvider interface when REN-1280 ships.
+ * WorkareaProvider interface when follow-up work ships.
  *
- * Typed public API (REN-1285):
+ * Typed public API:
  *   addWorktree, removeWorktreePath, listWorktrees, cleanWorktree
  *   — each returns a structured Result type, no thrown errors for expected failures.
  */
@@ -31,7 +31,7 @@ export {
   // Bootstrap helpers
   bootstrapWorktreeDeps,
   configureMergiraf,
-  // Typed public API (REN-1285)
+  // Typed public API
   addWorktree,
   removeWorktreePath,
   listWorktrees,
@@ -44,7 +44,7 @@ export type {
   CreateWorktreeOptions,
 } from './git-worktree.js'
 
-// Result types (REN-1285)
+// Result types
 export {
   ok,
   err,
@@ -76,7 +76,7 @@ export {
   syncDependencies,
 } from './dep-linker.js'
 
-// WorkareaProvider local-pool implementation (REN-1280)
+// WorkareaProvider local-pool implementation
 export {
   LocalPoolWorkareaProvider,
   computeCleanStateChecksum,
@@ -87,7 +87,7 @@ export type {
   LocalPoolConfig,
 } from './local-pool.js'
 
-// WorkareaProvider types (REN-1280)
+// WorkareaProvider types
 export type {
   WorkareaId,
   CleanStateChecksum,

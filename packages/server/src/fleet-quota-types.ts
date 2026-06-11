@@ -4,7 +4,7 @@
  * Kueue-inspired per-project/team fleet quotas with concurrent session limits,
  * daily cost budgets, per-session cost ceilings, and cohort borrowing/lending.
  *
- * See SUP-1189 Section 3.3 for design background.
+ * See the design notes for design background.
  */
 
 /**

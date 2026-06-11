@@ -1,12 +1,12 @@
 /**
  * Architectural Intelligence — workflow verb registration
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Cooperation with the rest of the architecture" — Workflow Engine
- * Architecture reference: rensei-architecture/016-workflow-engine.md §Verb registry
- * Architecture reference: rensei-architecture/015-plugin-spec.md §Workflow Verb registry
+ * Architecture reference: donmai-architecture/016-workflow-engine.md §Verb registry
+ * Architecture reference: donmai-architecture/015-plugin-spec.md §Workflow Verb registry
  *
- * REN-1326: Registers the `architecture.assess_change` workflow verb.
+ * Registers the `architecture.assess_change` workflow verb.
  *
  * Verb: `architecture.assess_change`
  *   kind:            action

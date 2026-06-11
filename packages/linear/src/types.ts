@@ -332,13 +332,13 @@ export type AgentWorkType =
   | 'refinement-coordination'     // Rejected: Coordinate refinement across sub-issues for parent issues
   | 'merge'                       // Merge queue: handle PR merge operations
   | 'security'                    // Security scanning: SAST, dependency audit
-  | 'improvement-loop'            // PM Agent: identify systemic patterns, author meta-issues (REN-1299)
-  | 'outcome-auditor'             // PM agent: audit accepted issues for delivery gaps, author follow-up issues (REN-1297)
-  | 'ga-readiness'                // PM agent: assess feature GA readiness before production promotion (REN-1327)
-  | 'documentation-steward'       // PM agent: flag stale docs, identify undocumented surfaces, author refinement issues (REN-1329)
-  | 'operational-scanner-vercel'  // PM agent: scan Vercel for deploy failures, timeouts, cold-start regressions (REN-1328)
-  | 'operational-scanner-audit'   // PM agent: scan audit chains for anomalies per 006 Seam 6 (REN-1328)
-  | 'operational-scanner-ci'      // PM agent: scan CI runs for flaky tests, slow steps, optimization opportunities (REN-1328)
+  | 'improvement-loop'            // PM Agent: identify systemic patterns, author meta-issues
+  | 'outcome-auditor'             // PM agent: audit accepted issues for delivery gaps, author follow-up issues
+  | 'ga-readiness'                // PM agent: assess feature GA readiness before production promotion
+  | 'documentation-steward'       // PM agent: flag stale docs, identify undocumented surfaces, author refinement issues
+  | 'operational-scanner-vercel'  // PM agent: scan Vercel for deploy failures, timeouts, cold-start regressions
+  | 'operational-scanner-audit'   // PM agent: scan audit chains for anomalies per 006 Seam 6
+  | 'operational-scanner-ci'      // PM agent: scan CI runs for flaky tests, slow steps, optimization opportunities
 
 /**
  * Mapping from Linear issue status to agent work type
@@ -611,7 +611,7 @@ export interface AgentSessionUpdateResult {
  * @see https://linear.app/developers/agents
  */
 export interface AgentSessionCreateOnIssueInput {
-  /** The issue ID (UUID) or identifier (e.g., 'SUP-123') to create the session on */
+  /** The issue ID (UUID) or identifier (e.g., 'ABC-123') to create the session on */
   issueId: string
   /** External URLs linking to agent dashboard/logs */
   externalUrls?: AgentSessionExternalUrl[]

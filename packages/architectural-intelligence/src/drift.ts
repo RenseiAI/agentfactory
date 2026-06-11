@@ -1,10 +1,10 @@
 /**
  * Architectural Intelligence — drift detection implementation
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Architectural Intelligence" — Drift detection
  *
- * REN-1326: Implements `ArchitecturalIntelligence.assess(change) → DriftReport`.
+ * Implements `ArchitecturalIntelligence.assess(change) → DriftReport`.
  *
  * Algorithm:
  *   1. Read the change's diff via `PrDiff` (caller-provided; no live VCS calls).

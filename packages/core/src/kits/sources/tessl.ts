@@ -8,7 +8,7 @@
  * standard Kit manifest shape so they ride the same Plugin trust model and
  * composition algorithm.
  *
- * Architecture reference: rensei-architecture/005-kit-manifest-spec.md
+ * Architecture reference: donmai-architecture/005-kit-manifest-spec.md
  * §Registry sources — "Tessl registry"
  *
  * API shape (observed / documented):
@@ -21,7 +21,7 @@
  * Trust model:
  * - Synthesized kits carry authorIdentity from the tile's `publisher` field.
  * - Signature verification is STUB_VALID (permissive OSS mode, same as
- *   PluginLoader). Full sigstore wiring is REN-1314.
+ *   PluginLoader). Full sigstore wiring is.
  * - Imported kits use the same validateKitManifest() path as local kits.
  */
 

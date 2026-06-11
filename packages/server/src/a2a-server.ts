@@ -142,7 +142,7 @@ const WORK_TYPE_SKILLS: Record<AgentWorkType, A2aSkill> = {
   'operational-scanner-vercel': {
     id: 'operational-scanner-vercel',
     name: 'Operational Scanner — Vercel',
-    description: 'Scan Vercel deploy logs for failures, function timeouts, and cold-start regressions; author bug-report issues (REN-1328; live binding pending REN-1311)',
+    description: 'Scan Vercel deploy logs for failures, function timeouts, and cold-start regressions; author bug-report issues (live binding pending)',
     tags: ['pm', 'operational', 'vercel', 'scanning'],
   },
   'operational-scanner-audit': {

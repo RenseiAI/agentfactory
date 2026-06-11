@@ -10,7 +10,6 @@
  *
  * Controlled via the SCHEDULER_MODE environment variable.
  *
- * SUP-1292
  */
 
 import { createLogger } from '../logger.js'

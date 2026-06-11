@@ -5,7 +5,7 @@
  * canvas UI and execution engine with provider plugin information.
  *
  * Provider plugin types (ProviderPlugin, ActionDefinition) are imported
- * from providers/plugin-types.ts (defined by SUP-1511).
+ * from providers/plugin-types.ts (defined by).
  */
 
 import type { JSONSchema7 } from 'json-schema'

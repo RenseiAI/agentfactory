@@ -1,7 +1,7 @@
 /**
  * Observation cluster + dedupe logic for the Architectural Intelligence pipeline.
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Architectural Intelligence" — Inference pipeline
  *
  * Design decisions:

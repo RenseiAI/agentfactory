@@ -8,7 +8,7 @@ metadata:
     issues for gaps; tags audited issues with audit:clean or audit:has-followups.
   workType: outcome-auditor
 
-# Cron-trigger metadata — consumed by the Active Backlog Management workflow (REN-1300).
+# Cron-trigger metadata — consumed by the Active Backlog Management workflow.
 # No cron wiring is required here; this metadata is read by the workflow engine.
 schedule:
   triggers:

@@ -5,7 +5,7 @@
  * and the validation logic that enforces schema, semver, namespace, and
  * signature constraints at install time.
  *
- * Architecture reference: rensei-architecture/015-plugin-spec.md
+ * Architecture reference: donmai-architecture/015-plugin-spec.md
  *
  * Key rules enforced here:
  * - Every verb id must start with `<plugin.metadata.id>.` (namespace enforcement)

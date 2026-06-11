@@ -267,7 +267,7 @@ export function formatFailedDeployments(result: DeploymentCheckResult): string {
  * Find open PRs associated with a Linear issue identifier
  * Searches for PRs with the issue identifier in the branch name or title
  *
- * @param issueIdentifier - The Linear issue identifier (e.g., "SUP-123")
+ * @param issueIdentifier - The Linear issue identifier (e.g., "ABC-123")
  * @param options - Options for the search
  * @returns Array of matching PRs
  */

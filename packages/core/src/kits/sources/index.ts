@@ -4,7 +4,7 @@
  * Exports the Tessl and agentskills.io registry source adapters plus the
  * federated kit source loader.
  *
- * Architecture reference: rensei-architecture/005-kit-manifest-spec.md
+ * Architecture reference: donmai-architecture/005-kit-manifest-spec.md
  * §Registry sources
  */
 

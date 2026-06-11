@@ -1,7 +1,7 @@
 /**
  * VersionControlProvider — VCS abstraction interface
  *
- * Architecture reference: rensei-architecture/008-version-control-providers.md
+ * Architecture reference: donmai-architecture/008-version-control-providers.md
  *
  * Design:
  * - Required verbs (clone, recordChange, push, pull) every provider must implement.
@@ -222,8 +222,8 @@ export interface AttestationRef {
  *   - openProposal / mergeProposal ← capabilities.hasPullRequests
  *   - enqueueForMerge              ← capabilities.hasMergeQueue
  *   - resolveConflict              ← consumer checks conflicts[].length > 0
- *   - attest                       ← capabilities.supportsAttest (REN-1343 first-class
- *                                    verb declaration; consumed by REN-1314 sigstore).
+ *   - attest                       ← capabilities.supportsAttest (first-class
+ *                                    verb declaration; consumed by the sigstore).
  *                                    Every shipped adapter declares supportsAttest: true
  *                                    — git fakes via trailers, S3 via metadata, Atomic
  *                                    uses native Ed25519. Minimal community adapters
@@ -314,11 +314,11 @@ export interface VersionControlProvider extends Provider<'vcs'> {
    * For Atomic: uses native Ed25519 + session attestation.
    * For S3: writes object metadata.
    *
-   * Gate: capabilities.supportsAttest (REN-1343). First-class verb on every
+   * Gate: capabilities.supportsAttest. First-class verb on every
    * shipped adapter. provenanceNative additionally indicates whether the
    * attestation is native (Atomic) or faked via trailers/metadata (git, S3).
    *
-   * Consumed by REN-1314 (sigstore manifest signing) — providers declaring
+   * Consumed by the sigstore manifest signing work — providers declaring
    * supportsAttest: true are eligible for the SLSA-attested signing pipeline.
    */
   attest?(ws: Workspace, sessionMetadata: SessionAttestation): Promise<AttestationRef>

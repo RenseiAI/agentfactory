@@ -5,7 +5,7 @@
  * this interface. The signing runtime dispatches to the appropriate
  * verifier based on ProviderSignature.algorithm.
  *
- * Architecture reference: rensei-architecture/002-provider-base-contract.md §Signing and trust
+ * Architecture reference: donmai-architecture/002-provider-base-contract.md §Signing and trust
  */
 
 // ---------------------------------------------------------------------------

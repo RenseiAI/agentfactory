@@ -1,7 +1,7 @@
 /**
  * Event processor — agent event stream loop and per-event handler
  *
- * Extracted from orchestrator.ts (REN-1342 phase-2 decomposition).
+ * Extracted from orchestrator.ts (phase-2 decomposition).
  * The functions here run with `this` bound to the AgentOrchestrator instance,
  * so they have full access to orchestrator state via `this.X` references.
  *
@@ -357,7 +357,7 @@ export async function processEventStream(
           agent.workResult = workResult
 
           if (workResult === 'passed') {
-            // REN-503/REN-1153: when the local merge queue is enabled,
+            // when the local merge queue is enabled,
             // a passing acceptance only signals "the code is ready to
             // ship". The actual transition to Accepted is driven by the
             // merge worker once the PR lands on main — that's what makes
@@ -428,7 +428,7 @@ export async function processEventStream(
 
       // Merge queue: enqueue PR after successful merge work, or after a
       // passing acceptance when the local merge queue is configured. This
-      // is the REN-503 primary handoff path — acceptance validates the
+      // is the primary handoff path — acceptance validates the
       // code, orchestrator hands the PR off to the queue, worker serializes
       // the actual merge against the latest main. Without this wire, the
       // queue feature is decorative (the trigger-merge dispatch that used
@@ -468,7 +468,7 @@ export async function processEventStream(
         }
       }
 
-      // --- REN-1316: Session-end Architectural Intelligence flush ---
+      // --- Session-end Architectural Intelligence flush ---
       // Flush new observations when the session completed successfully.
       // Best-effort — errors are swallowed inside flushSessionObservations.
       if (shouldFlushObservations(agent)) {

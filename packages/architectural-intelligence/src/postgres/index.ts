@@ -3,7 +3,7 @@
  * `ArchitecturalIntelligence` interface.
  *
  * Architecture references:
- *   - rensei-architecture/007-intelligence-services.md
+ *   - donmai-architecture/007-intelligence-services.md
  *     §"OSS vs SaaS responsibilities"
  *   - ADR-2026-05-18-arch-intel-continuous-learning.md §Decision §3
  *     "SDK is the data layer"

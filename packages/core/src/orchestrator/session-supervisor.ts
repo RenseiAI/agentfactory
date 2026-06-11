@@ -1,7 +1,7 @@
 /**
  * Session Supervisor — heartbeat, drain, and reap logic
  *
- * Extracted from orchestrator.ts (REN-1284).
+ * Extracted from orchestrator.ts.
  *
  * Provides type definitions and pure helper logic for the session lifecycle
  * concerns that AgentOrchestrator's `waitForAll`, `stopAgent`, `cleanup`, and
@@ -14,7 +14,7 @@
  *   - Drain — allow in-flight work to finish before shutdown
  *   - Reap — forcibly stop hung agents, record stop reason
  *
- * REN-1316: Architectural Intelligence retrieval is wired at session start and
+ * Architectural Intelligence retrieval is wired at session start and
  * session end via context-injection.ts. The supervisor exposes the
  * shouldFlushObservations() helper to determine when a session end warrants
  * flushing new observations back into the AI graph.
@@ -24,7 +24,7 @@ import type { AgentProcess } from './types.js'
 import type { Logger } from '../logger.js'
 
 // ---------------------------------------------------------------------------
-// REN-1316: Session-end observation flush decision
+// Session-end observation flush decision
 // ---------------------------------------------------------------------------
 
 /**

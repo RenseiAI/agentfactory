@@ -8,8 +8,8 @@ metadata:
     recurring failures, dedupes against existing issues, and authors bug-report issues
     with provenance. Default model: haiku for bulk scanning; sonnet on synthesis pass.
 
-    NOTE: Live Vercel data binding is mocked pending REN-1311 (RenseiVercelPlugin).
-    When REN-1311 ships, replace the mock source with the live Vercel MCP tools
+    NOTE: Live Vercel data binding is mocked pending a Vercel plugin.
+    When the live Vercel plugin ships, replace the mock source with the live Vercel MCP tools
     (vercel.list_deployments, vercel.get_deployment_build_logs, vercel.get_runtime_logs).
   workType: operational-scanner-vercel
 
@@ -27,7 +27,7 @@ tools:
     - shell: "rensei linear list-issues *"
     - shell: "rensei linear create-issue *"
     - shell: "rensei linear create-comment *"
-    # Live Vercel tools — wired when REN-1311 (RenseiVercelPlugin) ships:
+    # Live Vercel tools — wired when the live Vercel plugin ships:
     # - shell: "pnpm af-vercel list-deployments *"
     # - shell: "pnpm af-vercel get-deployment *"
     # - shell: "pnpm af-vercel get-runtime-logs *"
@@ -41,9 +41,9 @@ prompt: |
   Your job is to detect deploy failures, function timeouts, and cold-start
   regressions, then author actionable bug-report issues.
 
-  **DATA SOURCE NOTE:** The live Vercel binding (RenseiVercelPlugin, REN-1311) is
+  **DATA SOURCE NOTE:** The live Vercel binding (RenseiVercelPlugin,) is
   not yet wired. Use the mock Vercel data source provided in your session inputs, or
-  simulate with representative fixture data. When REN-1311 ships, replace the mock
+  simulate with representative fixture data. When the live Vercel plugin ships, replace the mock
   source with the live Vercel MCP tools.
 
   Project: {{identifier}}
@@ -113,7 +113,7 @@ prompt: |
 
   ### Provenance
   Scan run: {{identifier}}
-  Source: Vercel (mock — live binding pending REN-1311)"
+  Source: Vercel (mock — live binding pending)"
   ```
 
   Cap issue creation at **10 issues per scan** (configurable). If more than 10 new

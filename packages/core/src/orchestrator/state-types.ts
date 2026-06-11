@@ -26,7 +26,7 @@ export type WorktreeStatus =
 export interface WorktreeState {
   /** Linear issue ID (UUID) */
   issueId: string
-  /** Human-readable issue identifier (e.g., SUP-123) */
+  /** Human-readable issue identifier (e.g., ABC-123) */
   issueIdentifier: string
   /** Linear AgentSession ID (if available) */
   linearSessionId: string | null
@@ -58,7 +58,7 @@ export interface WorktreeState {
   pullRequestUrl?: string
   /**
    * Claude Code Task List ID for intra-session task coordination
-   * Format: {issueIdentifier}-{WORKTYPE} (e.g., "SUP-123-DEV")
+   * Format: {issueIdentifier}-{WORKTYPE} (e.g., "ABC-123-DEV")
    * Enables task persistence across crashes and subagent coordination
    */
   taskListId?: string

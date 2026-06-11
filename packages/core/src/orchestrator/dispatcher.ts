@@ -1,7 +1,7 @@
 /**
  * Dispatcher — work-queue routing and capability-based provider selection
  *
- * Extracted from orchestrator.ts (REN-1284).  Contains:
+ * Extracted from orchestrator.ts.  Contains:
  *   - Work-type detection and coordination-variant upgrade logic
  *   - Provider/model/profile resolution for a spawn context
  *   - Shell-command classification helpers used by the event loop

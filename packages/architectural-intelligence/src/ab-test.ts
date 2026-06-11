@@ -1,10 +1,10 @@
 /**
  * Architectural Intelligence — A/B Testing Harness
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Architectural Intelligence" — Synthesis prompts
  *
- * REN-1325: A/B harness to compare prompt versions on the same input stream.
+ * A/B harness to compare prompt versions on the same input stream.
  *
  * compareABPrompts(promptA, promptB, inputs, goldenOutputs, adapter) runs both
  * prompts against all inputs and returns side-by-side metrics for each run,

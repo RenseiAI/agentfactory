@@ -1,9 +1,9 @@
 /**
  * VCS diff reader for the Architectural Intelligence observation pipeline.
  *
- * Architecture reference: rensei-architecture/007-intelligence-services.md
+ * Architecture reference: donmai-architecture/007-intelligence-services.md
  * §"Architectural Intelligence" — Inference pipeline
- * Architecture reference: rensei-architecture/008-version-control-providers.md
+ * Architecture reference: donmai-architecture/008-version-control-providers.md
  *
  * This module reads merged PRs and commit diffs via the VCS provider and
  * converts them into ArchObservation candidates that the pipeline can

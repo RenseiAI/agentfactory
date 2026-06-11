@@ -158,7 +158,7 @@ export interface IssueTrackerProvider {
 
   /**
    * Fetch a single issue by ID or provider-native identifier.
-   * @param idOrIdentifier — UUID or human-readable key (e.g., "REN-1295")
+   * @param idOrIdentifier — UUID or human-readable key (e.g., "ABC-1295")
    */
   getIssue(idOrIdentifier: string): Promise<TrackerIssue>
 

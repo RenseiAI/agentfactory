@@ -27,7 +27,7 @@ export class AmpProvider implements AgentProvider {
     needsPermissionConfig: false,
     supportsCodeIntelligenceEnforcement: false,
     emitsSubagentEvents: false,
-    // REN-1245: Amp provider is a stub; no reasoning-effort plumbing yet.
+    // Amp provider is a stub; no reasoning-effort plumbing yet.
     supportsReasoningEffort: false,
     humanLabel: 'Amp',
   } as const

@@ -5,14 +5,14 @@
  * families: Sandbox, Workarea, AgentRuntime, VersionControl, IssueTracker,
  * Deployment, AgentRegistry, and Kit.
  *
- * Architecture reference: rensei-architecture/002-provider-base-contract.md
+ * Architecture reference: donmai-architecture/002-provider-base-contract.md
  *
  * Key design decisions:
  * - Provider<F> is generic on the family discriminator F (ProviderFamily)
  * - ProviderCapabilities<F> must be a flat object (no nested objects)
  * - Scope resolution: project > org > tenant > global, most-specific wins
  * - Same-level scope conflicts are an error (not a silent override)
- * - Manifest signing uses canonical-JSON hash; real sigstore wiring is REN-1314
+ * - Manifest signing uses canonical-JSON hash; real sigstore wiring is follow-up work
  */
 
 import { createHash } from 'node:crypto'
@@ -117,7 +117,7 @@ export interface AgentRuntimeProviderCapabilities {
   emitsSubagentEvents: boolean
   toolPermissionFormat: 'claude' | 'codex' | 'spring-ai' | 'generic'
   /**
-   * REN-1245: whether the provider honors per-step reasoning-effort hints
+   * whether the provider honors per-step reasoning-effort hints
    * (`low | medium | high | xhigh`). The dispatch path consults this flag to
    * decide whether to forward `Profile.dispatch.effort` to the provider
    * invocation or drop it (with a Layer-6 `capability-mismatch` warning).
@@ -130,9 +130,9 @@ export interface AgentRuntimeProviderCapabilities {
 /**
  * Capability matrix for VersionControlProvider implementations.
  *
- * Architecture reference: rensei-architecture/008-version-control-providers.md
+ * Architecture reference: donmai-architecture/008-version-control-providers.md
  *
- * REN-1343 expansion: in addition to the original Cycle-2 minimal struct
+ * Expansion: in addition to the original Cycle-2 minimal struct
  * (mergeStrategy, conflictGranularity, hasPullRequests, hasReviewWorkflow,
  * hasMergeQueue, identityScheme, provenanceNative), this capability matrix
  * now exposes the corpus-008 full surface — the higher-level groupings the
@@ -155,7 +155,7 @@ export interface AgentRuntimeProviderCapabilities {
  *   - supportsAttest   — whether attest() is a first-class verb. Every
  *                        adapter SHOULD support it (faked or native), but
  *                        a minimal adapter MAY declare false to opt out.
- *                        Consumed by REN-1314 sigstore work.
+ *                        Consumed by the sigstore work.
  *
  * The corpus-008 broader content/protocol surface is also surfaced:
  *   supportsBranches, supportsRebase, remoteProtocol, supportsBinary,
@@ -167,13 +167,13 @@ export interface AgentRuntimeProviderCapabilities {
 export interface VersionControlProviderCapabilities {
   // ── Merge model ─────────────────────────────────────────────────────────
   /**
-   * Original Cycle-2 field (REN-1289). Names the merge strategy family.
+   * Original Cycle-2 field. Names the merge strategy family.
    * Kept for backward compatibility with existing consumers.
    */
   mergeStrategy: 'three-way-text' | 'patch-theory' | 'crdt' | 'last-write-wins' | 'object-version' | 'cell-merge'
   /**
    * Corpus-008 alias for mergeStrategy. Kept in lock-step with mergeStrategy
-   * so the broader corpus-008 surface (REN-1343) is queryable by its
+   * so the broader corpus-008 surface is queryable by its
    * documented name without a renaming churn for downstream consumers.
    */
   mergeModel: 'three-way-text' | 'patch-theory' | 'crdt' | 'last-write-wins' | 'object-version' | 'cell-merge'
@@ -231,7 +231,7 @@ export interface VersionControlProviderCapabilities {
   /**
    * Whether attest() is a first-class verb on this provider.
    *
-   * Consumed by REN-1314 (sigstore manifest signing) — providers with
+   * Consumed by the sigstore manifest signing work — providers with
    * supportsAttest: true are eligible to receive the SLSA-attested signing
    * pipeline. Every shipped adapter (git, atomic, S3) SHOULD declare true;
    * a minimal community adapter MAY declare false to opt out without
@@ -393,7 +393,7 @@ export type ProviderHookEvent =
   // toolUseId so consumers can pair pre/post for the same call.
   //
   // Added 2026-05-12 per ADR-2026-05-12-cross-process-hook-bus-bridge — these
-  // are the kinds REN-1184 in-session memory injection and the Context
+  // are the kinds in-session memory injection and the Context
   // satellite consume. Out-of-process providers (Go daemon, future RPC
   // providers) emit equivalent events via a platform-side bridge owned by
   // the daemon→platform ingest route; the bus contract is identical from
@@ -510,7 +510,7 @@ export function hashManifest<F extends ProviderFamily>(manifest: ProviderManifes
 /**
  * Verify a provider signature against a manifest.
  *
- * REN-1314: Real verifier dispatch is now wired via ./signing.ts.
+ * Real verifier dispatch is now wired via ./signing.ts.
  * Four algorithms are supported: sigstore, cosign, minisign, ed25519.
  *
  * This function is intentionally synchronous for backwards compatibility.

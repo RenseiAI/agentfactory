@@ -8,11 +8,11 @@
  *   3. Instructs the agent to scan for deploy failures, function timeouts,
  *      and cold-start regressions.
  *   4. Instructs the agent to dedupe against existing issues before authoring.
- *   5. Documents the REN-1311 mock-data note.
+ *   5. Documents the mock-data note.
  *
- * Data source note: REN-1311 (RenseiVercelPlugin) is NOT done. All tests use
+ * Data source note: the live Vercel plugin is NOT done. All tests use
  * fixture data that simulates what a live Vercel source would return.
- * The scanner prompt explicitly documents this with a REN-1311 reference.
+ * The scanner prompt explicitly documents this.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -314,13 +314,13 @@ describe('operational-scanner-vercel template (REN-1328)', () => {
   })
 
   // -------------------------------------------------------------------------
-  // 4. REN-1311 mock-data note
+  // 4. Mock-data note
   // -------------------------------------------------------------------------
-  describe('REN-1311 mock-data documentation', () => {
-    it('prompt documents that live Vercel binding is pending REN-1311', () => {
+  describe('mock-data documentation', () => {
+    it('prompt documents that live Vercel binding is pending the live Vercel plugin', () => {
       const registry = buildRegistry()
       const result = render(registry)
-      expect(result).toContain('REN-1311')
+      expect(result).toContain('live Vercel plugin')
     })
 
     it('prompt instructs use of mock data source when live source is unavailable', () => {

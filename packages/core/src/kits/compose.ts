@@ -21,7 +21,7 @@
  * | workarea_config.preserve| Union                                                |
  * | hooks                   | All run; foundation hooks run first                  |
  *
- * Architecture reference: rensei-architecture/005-kit-manifest-spec.md
+ * Architecture reference: donmai-architecture/005-kit-manifest-spec.md
  */
 
 import type {

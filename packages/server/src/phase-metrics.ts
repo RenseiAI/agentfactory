@@ -5,7 +5,6 @@
  * rework rate, escalation strategy distribution) across all workflow
  * states in Redis. Supports time-range filtering (7d, 30d, 90d).
  *
- * @see SUP-1648
  */
 
 import { redisKeys, redisGet, isRedisConfigured } from './redis.js'

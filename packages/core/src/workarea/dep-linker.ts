@@ -2,8 +2,8 @@
  * Workarea — Dependency linking and synchronisation
  *
  * Plain functions for linking node_modules from a main repo into a worktree
- * and syncing lockfile drift.  Extracted from orchestrator.ts (REN-1284) to
- * scaffold the WorkareaProvider interface (REN-1280).
+ * and syncing lockfile drift.  Extracted from orchestrator.ts to
+ * scaffold the WorkareaProvider interface.
  */
 
 import { execSync } from 'child_process'

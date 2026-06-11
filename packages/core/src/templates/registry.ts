@@ -207,7 +207,7 @@ export class TemplateRegistry {
   }
 
   /**
-   * Get the raw allow and disallow permission arrays for a work type (SUP-1748).
+   * Get the raw allow and disallow permission arrays for a work type.
    * Used by the orchestrator to build Codex permission configs via the adapter.
    */
   getRawToolPermissions(workType: AgentWorkType, strategy?: string): {

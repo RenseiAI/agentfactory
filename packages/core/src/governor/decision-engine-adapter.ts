@@ -8,7 +8,6 @@
  * This adapter enables the platform to replace the legacy decision engine
  * with a declarative workflow while preserving identical behavior.
  *
- * @see SUP-1757
  */
 
 import type { GovernorConfig } from './governor-types.js'

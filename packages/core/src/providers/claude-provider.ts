@@ -168,7 +168,7 @@ export class ClaudeProvider implements AgentProvider {
     supportsCodeIntelligenceEnforcement: true,
     toolPermissionFormat: 'claude' as const,
     emitsSubagentEvents: true,
-    // REN-1245: Claude SDK accepts `effort` directly (1:1 with our
+    // Claude SDK accepts `effort` directly (1:1 with our
     // EffortLevel ladder — see effortToClaudeOptions).
     supportsReasoningEffort: true,
     humanLabel: 'Claude',

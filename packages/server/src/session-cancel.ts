@@ -1,5 +1,5 @@
 /**
- * Session Cancel Coordinator — REN-1398 (Decision 4)
+ * Session Cancel Coordinator (Decision 4)
  *
  * Cooperative cancel for the long-running runtime substrate.  External
  * callers (UI, governor, parent agent) signal `requestSessionCancel`;
@@ -7,10 +7,10 @@
  * `session.cancelled` event when the in-flight step completes.
  *
  * Architecture references:
- *   - rensei-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
+ *   - donmai-architecture/ADR-2026-04-29-long-running-runtime-substrate.md
  *     (commit 56f2bc6) — Decision 4 (cancel/resume semantics).
- *   - REN-1313 — Layer 6 hook bus (where cancel events surface).
- *   - REN-1397 — journal primitive (resume-from-journal consumes the same
+ *   - Layer 6 hook bus (where cancel events surface).
+ *   - journal primitive (resume-from-journal consumes the same
  *     `listSessionJournal` API to determine the last completed step).
  *
  * Design contract:

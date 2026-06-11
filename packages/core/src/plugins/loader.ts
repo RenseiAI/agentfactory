@@ -12,8 +12,8 @@
  * - One-OAuth-per-install enforcement (atomic auth scope set)
  * - Hot-reload gating (disabled in production)
  *
- * Architecture reference: rensei-architecture/015-plugin-spec.md
- * Depends on: REN-1279 provider base contract (packages/core/src/providers/base.ts)
+ * Architecture reference: donmai-architecture/015-plugin-spec.md
+ * Depends on: the provider base contract (packages/core/src/providers/base.ts)
  *
  * Signing note: Structural signature checks (hash, empty-value, publicKey) run
  * synchronously via verifyPluginSignature() from manifest.ts. Cryptographic
@@ -96,7 +96,7 @@ export interface PluginLoaderOptions {
   requireSignatures?: boolean
 
   /**
-   * Plugin-loader trust mode (REN-1344). Gates the trusted-issuer check:
+   * Plugin-loader trust mode. Gates the trusted-issuer check:
    *
    * - `permissive`: unsigned and untrusted-signer plugins emit a warning
    *   but are accepted (default; preserves OSS behaviour).
@@ -404,7 +404,7 @@ export class PluginLoader {
       }
     }
 
-    // 2c. Trusted-issuer gate (REN-1344)
+    // 2c. Trusted-issuer gate
     // Only run when not bypassed; in test bypass mode we skip both crypto
     // verification and the trust check to keep test fixtures simple.
     if (!options._testBypassSignatureVerify) {

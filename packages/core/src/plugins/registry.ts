@@ -5,7 +5,7 @@
  * verb registrations. The loader populates this registry; the orchestrator and
  * workflow engine query it.
  *
- * Architecture reference: rensei-architecture/015-plugin-spec.md §Workflow Verb registry
+ * Architecture reference: donmai-architecture/015-plugin-spec.md §Workflow Verb registry
  *
  * Design decisions:
  * - Single-process, in-memory. No persistence layer — persistence is the

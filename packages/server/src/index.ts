@@ -16,7 +16,7 @@ export * from './work-queue.js'
 // Scheduling queue (three-tier: active, backoff, suspended)
 export * from './scheduling-queue.js'
 
-// Per-step journal primitive (REN-1397, ADR-2026-04-29 §Decisions 2,3,7)
+// Per-step journal primitive (ADR-2026-04-29 §Decisions 2,3,7)
 export * from './journal.js'
 
 // Worker pool
@@ -135,23 +135,23 @@ export { createLocalMergeQueueStorage } from './merge-queue-storage-bridge.js'
 // Security scan event storage (Redis-backed)
 export * from './security-scan-storage.js'
 
-// Session event bus (Layer 6 hook surface for session-scoped events) — REN-1399
+// Session event bus (Layer 6 hook surface for session-scoped events)
 export * from './session-event-bus.js'
 
-// Session heartbeat emitter (15s cadence; ADR Decision 5) — REN-1399
+// Session heartbeat emitter (15s cadence; ADR Decision 5)
 export * from './session-heartbeat.js'
 
-// JWT tenant envelope verification (ADR Decision 6) — REN-1399
+// JWT tenant envelope verification (ADR Decision 6)
 export * from './jwt-envelope.js'
 
-// Cooperative session cancel coordinator (ADR Decision 4) — REN-1398
+// Cooperative session cancel coordinator (ADR Decision 4)
 export * from './session-cancel.js'
 
-// Suspend-until-time wake queue + 1Hz sweeper (ADR Decision 4) — REN-1398
+// Suspend-until-time wake queue + 1Hz sweeper (ADR Decision 4)
 export * from './suspend-until-time.js'
 
-// Resume-from-journal marker (ADR Decision 4) — REN-1398
+// Resume-from-journal marker (ADR Decision 4)
 export * from './session-resume.js'
 
-// Cooperative step runner (ADR Decision 4) — REN-1398
+// Cooperative step runner (ADR Decision 4)
 export * from './step-runner.js'
