@@ -1,3 +1,7 @@
+> **AgentFactory became Donmai.** The runtime that powered AgentFactory now ships as [Donmai](https://github.com/RenseiAI/donmai), a Go binary with a persistent daemon, durable execution graph, and MCP-native tooling. If you arrived here from a github.com/RenseiAI/agentfactory link, the canonical project is at [github.com/RenseiAI/donmai](https://github.com/RenseiAI/donmai); docs and install instructions are at [donmai.dev](https://donmai.dev).
+>
+> **Deprecation notice:** The `@donmai/*` npm packages in this repository are deprecated as of 2026-06-11. No further versions will be published. The capabilities they exposed are now part of the `donmai` binary directly.
+
 # Donmai
 
 [![npm version](https://img.shields.io/npm/v/@donmai/core)](https://www.npmjs.com/package/@donmai/core)
