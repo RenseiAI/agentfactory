@@ -164,6 +164,8 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     needs: [build]
+    env:
+      NODE_OPTIONS: --experimental-sqlite
     steps:
       - uses: actions/checkout@v6
 
