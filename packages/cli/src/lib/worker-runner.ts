@@ -12,7 +12,6 @@ import os from 'os'
 import {
   createOrchestrator,
   createLogger,
-  loadRepositoryConfig,
   NullIssueTrackerClient,
   type AgentProcess,
   type OrchestratorIssue,
@@ -28,8 +27,6 @@ import {
   type AgentWorkType,
 } from '@donmai/plugin-linear'
 import {
-  MergeQueueStorage,
-  createLocalMergeQueueStorage,
   reserveFiles as serverReserveFiles,
   checkFileConflicts as serverCheckFileConflicts,
   releaseFiles as serverReleaseFiles,
@@ -786,14 +783,6 @@ export async function runWorker(
       }
       const statusMappings = createLinearStatusMappings()
 
-      // Create local merge queue storage if configured
-      const repoConfig = loadRepositoryConfig(gitRoot)
-      const needsLocalStorage = repoConfig?.mergeQueue?.enabled &&
-        (!repoConfig.mergeQueue.provider || repoConfig.mergeQueue.provider === 'local')
-      const mergeQueueStorage = needsLocalStorage
-        ? createLocalMergeQueueStorage(new MergeQueueStorage())
-        : undefined
-
       // Create file reservation delegate.
       // Priority: direct Redis (OSS) → platform API proxy (SaaS) → disabled
       const repoId = path.basename(gitRoot)
@@ -816,7 +805,6 @@ export async function runWorker(
           worktreePath: path.resolve(gitRoot, '..', path.basename(gitRoot) + '.wt'),
           issueTrackerClient,
           statusMappings,
-          mergeQueueStorage,
           fileReservation,
           toolPlugins: [linearPlugin, codeIntelligencePlugin].filter(Boolean) as ToolPlugin[],
           apiActivityConfig: {

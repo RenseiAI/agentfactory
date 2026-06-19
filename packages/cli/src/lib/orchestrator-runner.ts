@@ -10,7 +10,6 @@ import path from 'path'
 import { execSync } from 'child_process'
 import {
   createOrchestrator,
-  loadRepositoryConfig,
   type AgentProcess,
   type AgentWorkType,
   type OrchestratorIssue,
@@ -22,8 +21,6 @@ import {
   linearPlugin,
 } from '@donmai/plugin-linear'
 import {
-  MergeQueueStorage,
-  createLocalMergeQueueStorage,
   reserveFiles as serverReserveFiles,
   checkFileConflicts as serverCheckFileConflicts,
   releaseFiles as serverReleaseFiles,
@@ -164,14 +161,6 @@ export async function runOrchestrator(
   const issueTrackerClient = new LinearIssueTrackerClient({ apiKey: config.linearApiKey })
   const statusMappings = createLinearStatusMappings()
 
-  // Create local merge queue storage if configured
-  const repoConfig = loadRepositoryConfig(gitRoot)
-  const needsLocalStorage = repoConfig?.mergeQueue?.enabled &&
-    (!repoConfig.mergeQueue.provider || repoConfig.mergeQueue.provider === 'local')
-  const mergeQueueStorage = needsLocalStorage
-    ? createLocalMergeQueueStorage(new MergeQueueStorage())
-    : undefined
-
   // Create file reservation delegate when Redis is available.
   // Platform workers use worker-runner which supports API proxy fallback.
   const repoId = path.basename(gitRoot)
@@ -191,7 +180,6 @@ export async function runOrchestrator(
     linearApiKey: config.linearApiKey,
     issueTrackerClient,
     statusMappings,
-    mergeQueueStorage,
     fileReservation,
     toolPlugins: [linearPlugin, codeIntelligencePlugin].filter(Boolean) as ToolPlugin[],
   }
