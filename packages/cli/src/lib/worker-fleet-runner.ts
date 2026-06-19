@@ -12,7 +12,6 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { getVersion, checkForUpdate, printUpdateNotification } from './version.js'
 import { maybeAutoUpdate, isAutoUpdateEnabled } from './auto-updater.js'
-import { startMergeWorkerSidecar, type MergeWorkerSidecarHandle } from './merge-worker-sidecar.js'
 
 // ---------------------------------------------------------------------------
 // Public config interface
@@ -160,7 +159,6 @@ function getDefaultWorkerScript(): string {
 
 class WorkerFleet {
   private workers: Map<number, WorkerInfo> = new Map()
-  private mergeWorkerHandle: MergeWorkerSidecarHandle | null = null
   private readonly fleetConfig: {
     workers: number
     capacity: number
@@ -236,23 +234,6 @@ class WorkerFleet {
       if (signal?.aborted) return
 
       fleetLog(null, colors.green, 'INF', `All ${workers} workers started`)
-
-      // Start merge worker sidecar (one per fleet, Redis lock prevents duplicates).
-      // Pass the same apiUrl/apiKey workers use so the sidecar can construct
-      // a proxy issue tracker for deployments that route Linear ops through
-      // the coordinator (no LINEAR_API_KEY in the fleet env).
-      this.mergeWorkerHandle = startMergeWorkerSidecar(
-        {
-          proxyConfig: {
-            apiUrl: this.fleetConfig.apiUrl,
-            apiKey: this.fleetConfig.apiKey,
-          },
-        },
-        signal,
-      )
-      if (this.mergeWorkerHandle) {
-        fleetLog(null, colors.cyan, 'INF', 'Merge worker sidecar started')
-      }
 
       // Periodic auto-update check (every 4 hours)
       if (isAutoUpdateEnabled(this.autoUpdateFlag)) {
@@ -398,26 +379,6 @@ class WorkerFleet {
       `\r\n${colors.yellow}Received ${reason} - shutting down fleet...${colors.reset}\r\n`,
     )
 
-    // Stop the merge worker sidecar in parallel with worker teardown. The
-    // sidecar has its own tight poll loop that can mark PRs failed / enqueue
-    // labeled PRs between now and when we'd otherwise get around to calling
-    // stop() — serializing it behind worker exits (the old order) meant the
-    // queue kept churning during the shutdown window, and when the worker
-    // wait hung on a race, the sidecar never got stopped at all.
-    const sidecarStop = this.mergeWorkerHandle
-      ? (async () => {
-          fleetLog(null, colors.cyan, 'INF', 'Stopping merge worker sidecar...')
-          this.mergeWorkerHandle!.stop()
-          try {
-            await this.mergeWorkerHandle!.done
-          } catch {
-            // Sidecar done-promise surfaces worker-loop errors; we're
-            // tearing down anyway.
-          }
-          fleetLog(null, colors.cyan, 'INF', 'Merge worker sidecar stopped')
-        })()
-      : Promise.resolve()
-
     for (const [id, worker] of this.workers) {
       fleetLog(id, worker.color, 'INF', 'Stopping worker...')
       try {
@@ -446,7 +407,6 @@ class WorkerFleet {
     )
 
     clearTimeout(forceKillTimeout)
-    await sidecarStop
 
     process.stdout.write(`${colors.green}All workers stopped${colors.reset}\r\n`)
 

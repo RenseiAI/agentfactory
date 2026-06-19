@@ -42,7 +42,6 @@
     "af-setup": "dist/src/setup.js",
     "af-migrate-worktrees": "dist/src/migrate-worktrees.js",
     "af-migrate-config-to-kits": "dist/src/migrate-config-to-kits.js",
-    "af-merge-queue": "dist/src/merge-queue.js",
     "af-code": "dist/src/code.js",
     "af-arch": "dist/src/code-arch.js"
   },
@@ -104,11 +103,6 @@
       "types": "./dist/src/lib/setup-mergiraf-runner.d.ts",
       "import": "./dist/src/lib/setup-mergiraf-runner.js",
       "default": "./dist/src/lib/setup-mergiraf-runner.js"
-    },
-    "./merge-queue": {
-      "types": "./dist/src/lib/merge-queue-runner.d.ts",
-      "import": "./dist/src/lib/merge-queue-runner.js",
-      "default": "./dist/src/lib/merge-queue-runner.js"
     },
     "./code-intelligence": {
       "types": "./dist/src/lib/code-intelligence-runner.d.ts",
