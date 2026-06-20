@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Run on the merge queue's merge_group ref so the required checks
+  # (Build, Test, Typecheck, Quality Ratchet, Secret Scan) report against it.
+  # Without this the queue sits in AWAITING_CHECKS forever and no PR can merge.
+  merge_group:
   workflow_call:
 
 # Default-deny: every job gets a read-only GITHUB_TOKEN unless it
