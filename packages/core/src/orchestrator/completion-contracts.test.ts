@@ -28,9 +28,9 @@ describe('getCompletionContract', () => {
     expect(contract).toBeDefined()
     const required = contract!.required.map(f => f.type)
     expect(required).toContain('work_result')
-    // REN-1153: acceptance must also resolve the PR (merged directly, or
-    // handed to the local merge queue). Prior contract let WORK_RESULT:passed
-    // alone satisfy the gate, leaving PRs open indefinitely after Accepted.
+    // Acceptance must also resolve the PR (merged directly). Prior contract
+    // let WORK_RESULT:passed alone satisfy the gate, leaving PRs open
+    // indefinitely after Accepted.
     expect(required).toContain('pr_merged_or_enqueued')
   })
 
@@ -226,10 +226,10 @@ describe('formatMissingFields', () => {
   })
 })
 
-describe('acceptance pr_merged_or_enqueued field (REN-1153)', () => {
+describe('acceptance pr_merged_or_enqueued field', () => {
   const contract = getCompletionContract('acceptance')!
 
-  it('workResult:passed alone is insufficient — PR must be merged OR enqueued', () => {
+  it('workResult:passed alone is insufficient — PR must be merged', () => {
     const validation = validateCompletion(contract, { workResult: 'passed' })
     expect(validation.satisfied).toBe(false)
     expect(validation.missingFields).toContain('pr_merged_or_enqueued')
@@ -239,14 +239,6 @@ describe('acceptance pr_merged_or_enqueued field (REN-1153)', () => {
     const validation = validateCompletion(contract, {
       workResult: 'passed',
       prMerged: true,
-    })
-    expect(validation.satisfied).toBe(true)
-  })
-
-  it('workResult:passed + prEnqueuedForMerge:true satisfies the contract', () => {
-    const validation = validateCompletion(contract, {
-      workResult: 'passed',
-      prEnqueuedForMerge: true,
     })
     expect(validation.satisfied).toBe(true)
   })

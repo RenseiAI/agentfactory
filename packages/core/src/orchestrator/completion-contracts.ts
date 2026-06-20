@@ -87,14 +87,6 @@ export interface SessionOutputs {
   commentPosted?: boolean
   subIssuesCreated?: boolean
   prMerged?: boolean
-  /**
-   * True when the orchestrator's post-acceptance auto-enqueue succeeded, or
-   * when a prior handoff (e.g., approved-for-merge label consumed by the
-   * sidecar) has placed the PR in the local queue. Combined with prMerged
-   * by the `pr_merged_or_enqueued` field check — either signal is sufficient
-   * for acceptance completion.
-   */
-  prEnqueuedForMerge?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -166,12 +158,11 @@ const FIELD = {
   },
   prMergedOrEnqueued: {
     type: 'pr_merged_or_enqueued' as const,
-    label: 'Pull request merged or enqueued for merge',
-    // Not backstop-capable: the orchestrator sets prEnqueuedForMerge
-    // synchronously when the auto-enqueue fires, and prMerged is set by
-    // the external merge path. If neither signal is present at
-    // session-end, the diagnostic comment path is the correct recovery —
-    // the backstop has no authority to decide whether a PR should merge.
+    label: 'Pull request merged',
+    // Not backstop-capable: prMerged is set by the external merge path. If
+    // the PR is not merged at session-end, the diagnostic comment path is
+    // the correct recovery — the backstop has no authority to decide
+    // whether a PR should merge.
     backstopCapable: false,
   },
 } satisfies Record<string, CompletionField>
@@ -328,7 +319,7 @@ function isFieldPresent(fieldType: CompletionFieldType, outputs: SessionOutputs)
     case 'pr_merged':
       return !!outputs.prMerged
     case 'pr_merged_or_enqueued':
-      return !!outputs.prMerged || !!outputs.prEnqueuedForMerge
+      return !!outputs.prMerged
     default:
       return false
   }

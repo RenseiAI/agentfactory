@@ -60,26 +60,6 @@ export function detectWorkType(
 }
 
 // ---------------------------------------------------------------------------
-// Acceptance-transition guard
-// ---------------------------------------------------------------------------
-
-/**
- * Decide whether a passing acceptance session should DEFER its
- * Delivered → Accepted promotion to the merge worker.
- *
- * Returns false when:
- *   - no merge queue adapter is configured (acceptance merges directly)
- *   - work type is not acceptance
- */
-export function shouldDeferAcceptanceTransition(
-  workType: AgentWorkType,
-  hasMergeQueueAdapter: boolean,
-): boolean {
-  if (!hasMergeQueueAdapter) return false
-  return workType === 'acceptance'
-}
-
-// ---------------------------------------------------------------------------
 // Shell-command classifiers (used by the event-stream loop)
 // ---------------------------------------------------------------------------
 

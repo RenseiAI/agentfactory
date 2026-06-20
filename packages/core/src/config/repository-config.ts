@@ -203,43 +203,6 @@ export const RepositoryConfigSchema = z.object({
    */
   routing: RoutingConfigSectionSchema.optional(),
   /**
-   * Merge queue configuration.
-   * Controls which merge queue provider agents use for automated merging.
-   */
-  mergeQueue: z.object({
-    /** Merge queue provider to use */
-    provider: z.enum(['github-native', 'local', 'mergify', 'trunk']).default('local'),
-    /** Whether merge queue integration is enabled */
-    enabled: z.boolean().default(false),
-    /** Automatically add approved PRs to merge queue */
-    autoMerge: z.boolean().default(true),
-    /** Required CI checks that must pass before merge (provider-specific) */
-    requiredChecks: z.array(z.string()).optional(),
-    /** Merge strategy: rebase, merge, or squash */
-    strategy: z.enum(['rebase', 'merge', 'squash']).default('rebase'),
-    /** Command to run after rebase (e.g., test suite) */
-    testCommand: z.string().default('pnpm test'),
-    /** Timeout for test command in milliseconds */
-    testTimeout: z.number().default(300_000),
-    /** Regenerate lock files after rebase */
-    lockFileRegenerate: z.boolean().default(true),
-    /** Use mergiraf for syntax-aware conflict resolution */
-    mergiraf: z.boolean().default(true),
-    /** Queue polling interval in milliseconds */
-    pollInterval: z.number().default(10_000),
-    /** Maximum retries for failed merges */
-    maxRetries: z.number().default(2),
-    /** Escalation policy for conflicts and test failures */
-    escalation: z.object({
-      onConflict: z.enum(['reassign', 'notify', 'park']).default('reassign'),
-      onTestFailure: z.enum(['notify', 'park', 'retry']).default('notify'),
-    }).optional(),
-    /** Delete PR branch after successful merge */
-    deleteBranchOnMerge: z.boolean().default(true),
-    /** Maximum concurrent merge operations (default 1 for backward compat) */
-    concurrency: z.number().min(1).default(1),
-  }).optional(),
-  /**
    * Worktree configuration.
    * Controls where git worktrees are created and how paths are resolved.
    */

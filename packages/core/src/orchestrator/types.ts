@@ -118,10 +118,6 @@ export interface OrchestratorConfig {
    * at startup and before spawning agents. Supports both HTTPS and SSH URL formats.
    */
   repository?: string
-  /** Merge queue adapter for automated merge operations */
-  mergeQueueAdapter?: import('../merge-queue/types.js').MergeQueueAdapter
-  /** Storage backend for the local merge queue adapter (required when provider is 'local') */
-  mergeQueueStorage?: import('../merge-queue/adapters/local.js').LocalMergeQueueStorage
   /**
    * File reservation delegate for per-file coordination across parallel sessions.
    * When provided, injected into ToolPluginContext so code-intelligence tools
@@ -200,13 +196,6 @@ export interface AgentProcess {
   inputTokens?: number
   /** Total output tokens used */
   outputTokens?: number
-  /**
-   * True when the orchestrator's post-acceptance auto-enqueue successfully
-   * handed the PR to the local merge queue. Feeds the acceptance completion
-   * contract's `pr_merged_or_enqueued` check so a "passed" acceptance with
-   * an unmerged, unqueued PR is treated as incomplete (regression).
-   */
-  prEnqueuedForMerge?: boolean
 }
 
 export interface OrchestratorEvents {
