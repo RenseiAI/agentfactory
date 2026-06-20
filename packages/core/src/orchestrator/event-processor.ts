@@ -22,7 +22,6 @@ import {
   isGrepGlobShellCommand,
   isToolRelatedError,
   extractToolNameFromError,
-  shouldDeferAcceptanceTransition,
 } from './dispatcher.js'
 import { parseSecurityScanOutput } from './security-scan-event.js'
 import { parseWorkResult } from './parse-work-result.js'
@@ -357,25 +356,11 @@ export async function processEventStream(
           agent.workResult = workResult
 
           if (workResult === 'passed') {
-            // when the local merge queue is enabled,
-            // a passing acceptance only signals "the code is ready to
-            // ship". The actual transition to Accepted is driven by the
-            // merge worker once the PR lands on main — that's what makes
-            // Accepted mean "live in production" rather than "the agent
-            // says we're done." On merge failure (conflict / test-fail /
-            // error) the worker demotes to Rejected and refinement picks
-            // it up. The orchestrator's only job here is to enqueue, which
-            // happens unconditionally a few lines below.
-            const deferredToMergeQueue = shouldDeferAcceptanceTransition(workType, !!this.mergeQueueAdapter)
-            if (deferredToMergeQueue) {
-              log?.info('Acceptance passed — deferring status transition to merge worker', {
-                workType,
-                rationale: 'mergeQueueEnabled',
-              })
-            } else {
-              targetStatus = this.statusMappings.workTypeCompleteStatus[workType]
-              log?.info('Work result: passed, promoting', { workType, targetStatus })
-            }
+            // A passing QA/acceptance result promotes the issue directly.
+            // (The Go landing serializer owns merges in production; the
+            // orchestrator no longer defers acceptance to a TS merge queue.)
+            targetStatus = this.statusMappings.workTypeCompleteStatus[workType]
+            log?.info('Work result: passed, promoting', { workType, targetStatus })
           } else if (workResult === 'failed') {
             targetStatus = this.statusMappings.workTypeFailStatus[workType]
             log?.info('Work result: failed, transitioning to fail status', { workType, targetStatus })
@@ -424,48 +409,6 @@ export async function processEventStream(
         }
       } else if (!isResultSensitive) {
         log?.info('No auto-transition configured for work type', { workType })
-      }
-
-      // Merge queue: enqueue PR after successful merge work, or after a
-      // passing acceptance when the local merge queue is configured. This
-      // is the primary handoff path — acceptance validates the
-      // code, orchestrator hands the PR off to the queue, worker serializes
-      // the actual merge against the latest main. Without this wire, the
-      // queue feature is decorative (the trigger-merge dispatch that used
-      // to populate it was removed in v0.8.20 as a QA-bypass fix).
-      const isMergeWork = workType === 'merge'
-      const isAcceptancePass =
-        workType === 'acceptance' &&
-        agent.workResult === 'passed'
-      const shouldEnqueue =
-        (isMergeWork || isAcceptancePass) &&
-        this.mergeQueueAdapter &&
-        agent.pullRequestUrl
-      if (shouldEnqueue) {
-        try {
-          const prMatch = agent.pullRequestUrl!.match(/\/([^/]+)\/([^/]+)\/pull\/(\d+)/)
-          if (prMatch) {
-            const [, owner, repo, prNum] = prMatch
-            const canEnqueue = await this.mergeQueueAdapter!.canEnqueue(owner, repo, parseInt(prNum, 10))
-            if (canEnqueue) {
-              const status = await this.mergeQueueAdapter!.enqueue(owner, repo, parseInt(prNum, 10))
-              log?.info('PR enqueued in merge queue', {
-                owner, repo, prNumber: prNum, state: status.state,
-                trigger: isMergeWork ? 'merge_work' : 'acceptance_pass',
-              })
-              // Feeds the acceptance completion contract's
-              // pr_merged_or_enqueued check so the backstop treats this
-              // as a successful handoff, not a missed merge.
-              agent.prEnqueuedForMerge = true
-            } else {
-              log?.info('PR not eligible for merge queue', { owner, repo, prNumber: prNum })
-            }
-          }
-        } catch (error) {
-          log?.warn('Failed to enqueue PR in merge queue', {
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
       }
 
       // --- Session-end Architectural Intelligence flush ---
@@ -1026,22 +969,6 @@ export async function handleAgentEvent(
         }
         progressLogger?.logError('Agent error result', new Error(errorMessage))
         sessionLogger?.logError('Agent error result', new Error(errorMessage), { subtype: event.errorSubtype })
-
-        // Merge queue: dequeue PR on merge agent failure
-        if (agent.workType === 'merge' && this.mergeQueueAdapter && agent.pullRequestUrl) {
-          try {
-            const prMatch = agent.pullRequestUrl.match(/\/([^/]+)\/([^/]+)\/pull\/(\d+)/)
-            if (prMatch) {
-              const [, owner, repo, prNum] = prMatch
-              await this.mergeQueueAdapter.dequeue(owner, repo, parseInt(prNum, 10))
-              log?.info('PR dequeued from merge queue after failure', { owner, repo, prNumber: prNum })
-            }
-          } catch (dequeueError) {
-            log?.warn('Failed to dequeue PR from merge queue', {
-              error: dequeueError instanceof Error ? dequeueError.message : String(dequeueError),
-            })
-          }
-        }
 
         // Report tool errors as Linear issues for tracking
         // Only report for 'error_during_execution' subtype (tool/execution errors)

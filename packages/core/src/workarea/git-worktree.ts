@@ -41,7 +41,7 @@ import type {
 import {
   isBranchConflictError as isBranchConflictErrorShared,
   parseConflictingWorktreePath as parseConflictingWorktreePathShared,
-} from '../merge-queue/branch-conflict.js'
+} from './branch-conflict.js'
 import {
   checkRecovery,
   initializeAgentDir,

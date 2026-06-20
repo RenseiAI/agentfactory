@@ -175,7 +175,9 @@ export function spawnAgent(
       testCommand: perProject?.testCommand ?? this.testCommand,
       validateCommand: perProject?.validateCommand ?? this.validateCommand,
       agentBugBacklog: process.env.AGENT_BUG_BACKLOG || undefined,
-      mergeQueueEnabled: !!this.mergeQueueAdapter,
+      // Merges are owned by the landing serializer; the orchestrator no longer
+      // runs a TS merge queue, so this prompt branch is always disabled.
+      mergeQueueEnabled: false,
       qualityBaseline: this.loadQualityBaselineForContext(worktreePath),
       model: resolvedModel,
       subAgentModel: resolvedSubAgentModel,

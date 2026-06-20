@@ -32,8 +32,6 @@ export interface DecisionEngineAdapterConfig {
   workflowName?: string
   /** Whether to include top-of-funnel nodes (Icebox handling) */
   includeTopOfFunnel?: boolean
-  /** Whether to include merge queue handling */
-  includeMergeQueue?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -62,11 +60,10 @@ export class DecisionEngineAdapter {
     const govConfig = config.governorConfig ?? DEFAULT_GOVERNOR_CONFIG
     const workflowName = config.workflowName ?? 'governor-decision-engine'
     const includeTopOfFunnel = config.includeTopOfFunnel ?? true
-    const includeMergeQueue = config.includeMergeQueue ?? false
 
     const triggers = buildTriggers()
     const providers = buildProviders()
-    const nodes = buildNodes(govConfig, includeTopOfFunnel, includeMergeQueue)
+    const nodes = buildNodes(govConfig, includeTopOfFunnel)
 
     return {
       apiVersion: 'v2',
@@ -130,7 +127,6 @@ function buildProviders(): ProviderRequirement[] {
 function buildNodes(
   config: GovernorConfig,
   includeTopOfFunnel: boolean,
-  includeMergeQueue: boolean,
 ): NodeDefinition[] {
   const nodes: NodeDefinition[] = []
 
@@ -151,7 +147,7 @@ function buildNodes(
 
   nodes.push(buildBacklogNode(config))
   nodes.push(buildStartedNode())
-  nodes.push(buildFinishedNode(config, includeMergeQueue))
+  nodes.push(buildFinishedNode(config))
   nodes.push(buildDeliveredNode(config))
   nodes.push(buildRejectedNode())
 
@@ -366,7 +362,7 @@ function buildStartedNode(): NodeDefinition {
   }
 }
 
-function buildFinishedNode(config: GovernorConfig, includeMergeQueue: boolean): NodeDefinition {
+function buildFinishedNode(config: GovernorConfig): NodeDefinition {
   const steps: StepDefinition[] = [
     {
       id: 'check-enabled',
@@ -394,12 +390,8 @@ function buildFinishedNode(config: GovernorConfig, includeMergeQueue: boolean): 
     },
   ]
 
-  // Always trigger QA for functional validation — merge queue handles git
-  // mechanics at merge time, not as a QA bypass.
-  // The includeMergeQueue flag is preserved for the adapter signature but the
-  // Finished node no longer short-circuits to trigger-merge.
-  void includeMergeQueue
-
+  // Always trigger QA for functional validation — the Finished node never
+  // short-circuits to a merge step (merges are owned by the landing serializer).
   steps.push({
     id: 'dispatch-qa',
     action: 'trigger-qa',

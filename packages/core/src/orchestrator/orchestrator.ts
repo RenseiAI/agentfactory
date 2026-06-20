@@ -72,11 +72,10 @@ import { ToolRegistry } from '../tools/index.js'
 import type { ToolPlugin } from '../tools/index.js'
 import type { TemplateContext } from '../templates/index.js'
 import { getLockFileName, getInstallCommand, getAddCommand, type PackageManager } from '../package-manager.js'
-import { createMergeQueueAdapter } from '../merge-queue/index.js'
 import {
   isBranchConflictError as isBranchConflictErrorShared,
   parseConflictingWorktreePath as parseConflictingWorktreePathShared,
-} from '../merge-queue/branch-conflict.js'
+} from '../workarea/branch-conflict.js'
 import type {
   OrchestratorConfig,
   OrchestratorIssue,
@@ -101,7 +100,6 @@ import {
   isToolRelatedError,
   extractToolNameFromError,
   mergeMentionContext,
-  shouldDeferAcceptanceTransition,
   detectWorkType as detectWorkTypeHelper,
   WORK_TYPE_SUFFIX,
 } from './dispatcher.js'
@@ -207,7 +205,7 @@ export function validateGitRemote(expectedRepo: string, cwd?: string): void {
   }
 }
 
-const DEFAULT_CONFIG: Required<Omit<OrchestratorConfig, 'linearApiKey' | 'project' | 'provider' | 'streamConfig' | 'apiActivityConfig' | 'workTypeTimeouts' | 'maxSessionTimeoutMs' | 'templateDir' | 'repository' | 'issueTrackerClient' | 'statusMappings' | 'toolPlugins' | 'mergeQueueAdapter' | 'mergeQueueStorage' | 'fileReservation' | 'deployProvider' | 'architecturalIntelligence' | 'architecturalContextMaxTokens'>> & {
+const DEFAULT_CONFIG: Required<Omit<OrchestratorConfig, 'linearApiKey' | 'project' | 'provider' | 'streamConfig' | 'apiActivityConfig' | 'workTypeTimeouts' | 'maxSessionTimeoutMs' | 'templateDir' | 'repository' | 'issueTrackerClient' | 'statusMappings' | 'toolPlugins' | 'fileReservation' | 'deployProvider' | 'architecturalIntelligence' | 'architecturalContextMaxTokens'>> & {
   streamConfig: OrchestratorStreamConfig
   maxSessionTimeoutMs?: number
 } = {
@@ -251,7 +249,6 @@ export {
 // Re-exported from dispatcher.ts (decomposition)
 export {
   mergeMentionContext,
-  shouldDeferAcceptanceTransition,
   extractShellCommand,
   isGrepGlobShellCommand,
 } from './dispatcher.js'
@@ -261,7 +258,7 @@ export { getWorktreeIdentifier } from '../workarea/git-worktree.js'
 export { detectWorkType } from './dispatcher.js'
 
 export class AgentOrchestrator {
-  /** @internal */ readonly config: Required<Omit<OrchestratorConfig, 'project' | 'provider' | 'streamConfig' | 'apiActivityConfig' | 'workTypeTimeouts' | 'maxSessionTimeoutMs' | 'templateDir' | 'repository' | 'issueTrackerClient' | 'statusMappings' | 'toolPlugins' | 'mergeQueueAdapter' | 'mergeQueueStorage' | 'fileReservation' | 'deployProvider' | 'architecturalIntelligence' | 'architecturalContextMaxTokens'>> & {
+  /** @internal */ readonly config: Required<Omit<OrchestratorConfig, 'project' | 'provider' | 'streamConfig' | 'apiActivityConfig' | 'workTypeTimeouts' | 'maxSessionTimeoutMs' | 'templateDir' | 'repository' | 'issueTrackerClient' | 'statusMappings' | 'toolPlugins' | 'fileReservation' | 'deployProvider' | 'architecturalIntelligence' | 'architecturalContextMaxTokens'>> & {
     project?: string
     repository?: string
     streamConfig: OrchestratorStreamConfig
@@ -328,8 +325,6 @@ export class AgentOrchestrator {
   /** @internal */ validateCommand?: string
   // Tool plugin registry for in-process agent tools
   /** @internal */ readonly toolRegistry: ToolRegistry
-  // Merge queue adapter for automated merge operations (initialized from config or repo config)
-  /** @internal */ mergeQueueAdapter?: import('../merge-queue/types.js').MergeQueueAdapter
   // Git repository root for running git commands (resolved from worktreePath or cwd)
   /** @internal */ readonly gitRoot: string
   // Architectural Intelligence for session-start context injection
@@ -474,18 +469,6 @@ export class AgentOrchestrator {
             this.configModels = getModelsConfig(repoConfig)
           }
 
-          // Initialize merge queue adapter from repository config
-          if (repoConfig.mergeQueue?.enabled && !config.mergeQueueAdapter) {
-            try {
-              const provider = repoConfig.mergeQueue.provider ?? 'local'
-              this.mergeQueueAdapter = createMergeQueueAdapter(provider, {
-                storage: config.mergeQueueStorage,
-              })
-              console.log(`[orchestrator] Merge queue adapter initialized: ${provider}`)
-            } catch (error) {
-              console.warn(`[orchestrator] Failed to initialize merge queue adapter: ${error instanceof Error ? error.message : String(error)}`)
-            }
-          }
         }
       }
     } catch (err) {
@@ -499,11 +482,6 @@ export class AgentOrchestrator {
         '[orchestrator] Legacy .worktrees/ directory detected inside the repo. ' +
         'Run "af-migrate-worktrees" to move worktrees to the new sibling directory.'
       )
-    }
-
-    // Accept merge queue adapter passed directly via config (takes precedence over repo config)
-    if (config.mergeQueueAdapter) {
-      this.mergeQueueAdapter = config.mergeQueueAdapter
     }
 
     // Initialize tool plugin registry with injected plugins
@@ -1425,14 +1403,6 @@ ORCHESTRATOR_INSTALL=1 exec ${addCmd} "\$@"
     extra?: { dispatchModel?: string; dispatchSubAgentModel?: string }
   ): Promise<AgentProcess> {
     return spawnAgentForIssueImpl.call(this, issueIdOrIdentifier, sessionId, workType, prompt, extra)
-  }
-
-  /**
-   * Get the merge queue adapter, if configured.
-   * Returns undefined if no merge queue is enabled.
-   */
-  getMergeQueueAdapter(): import('../merge-queue/types.js').MergeQueueAdapter | undefined {
-    return this.mergeQueueAdapter
   }
 
   /**

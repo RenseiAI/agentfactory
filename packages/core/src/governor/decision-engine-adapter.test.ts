@@ -174,20 +174,11 @@ describe('DecisionEngineAdapter', () => {
       expect(actions).toContain('decompose')
     })
 
-    it('never includes merge queue step in Finished (merge queue does not bypass QA)', () => {
-      const workflowEnabled = DecisionEngineAdapter.toWorkflowDefinition({
-        includeMergeQueue: true,
-      })
-      const nodeEnabled = findNode(workflowEnabled, 'route-finished')
-      const actionsEnabled = nodeEnabled?.steps?.map(s => s.action)
-      expect(actionsEnabled).not.toContain('trigger-merge')
-
-      const workflowDisabled = DecisionEngineAdapter.toWorkflowDefinition({
-        includeMergeQueue: false,
-      })
-      const nodeDisabled = findNode(workflowDisabled, 'route-finished')
-      const actionsDisabled = nodeDisabled?.steps?.map(s => s.action)
-      expect(actionsDisabled).not.toContain('trigger-merge')
+    it('never includes a merge step in Finished (merges are owned by the landing serializer)', () => {
+      const workflow = DecisionEngineAdapter.toWorkflowDefinition()
+      const node = findNode(workflow, 'route-finished')
+      const actions = node?.steps?.map(s => s.action)
+      expect(actions).not.toContain('trigger-merge')
     })
 
     it('includes Delivered routing node', () => {
@@ -247,7 +238,6 @@ describe('DecisionEngineAdapter', () => {
 
   describe('decision parity with decideAction()', () => {
     const workflow = DecisionEngineAdapter.toWorkflowDefinition({
-      includeMergeQueue: true,
       includeTopOfFunnel: true,
     })
 
