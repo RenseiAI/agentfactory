@@ -14,11 +14,10 @@ const IDE_SETTLE_DELAY_MS = 1500
 
 /**
  * Reserved directory names inside the worktree root that are NOT agent worktrees.
- * These are infrastructure directories used by the merge queue and other subsystems.
+ * These are infrastructure directories used by internal subsystems.
  */
 const RESERVED_WORKTREE_DIRS = new Set([
   '.patches',
-  '__merge-worker__',
 ])
 
 // ---------------------------------------------------------------------------

@@ -575,7 +575,6 @@ describe('Provider<F> generic typing', () => {
       patchModel: 'commit-graph',
       hasPullRequests: true,
       hasReviewWorkflow: true,
-      hasMergeQueue: false,
       branchSemantics: 'git-branches',
       supportsBranches: true,
       supportsRebase: true,

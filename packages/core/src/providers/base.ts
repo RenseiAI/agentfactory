@@ -134,9 +134,9 @@ export interface AgentRuntimeProviderCapabilities {
  *
  * Expansion: in addition to the original Cycle-2 minimal struct
  * (mergeStrategy, conflictGranularity, hasPullRequests, hasReviewWorkflow,
- * hasMergeQueue, identityScheme, provenanceNative), this capability matrix
+ * identityScheme, provenanceNative), this capability matrix
  * now exposes the corpus-008 full surface — the higher-level groupings the
- * scheduler, audit-chain aggregator, and merge-queue logic branch on:
+ * scheduler and audit-chain aggregator branch on:
  *
  *   - mergeModel       — names the model family (three-way-text / patch-theory / ...)
  *                        same value as `mergeStrategy`; kept in sync as the
@@ -196,7 +196,6 @@ export interface VersionControlProviderCapabilities {
   // ── Proposal/review concepts ────────────────────────────────────────────
   hasPullRequests: boolean
   hasReviewWorkflow: boolean
-  hasMergeQueue: boolean
 
   // ── Branching ───────────────────────────────────────────────────────────
   /**

@@ -104,9 +104,9 @@ const WORK_TYPE_SKILLS: Record<AgentWorkType, A2aSkill> = {
     tags: ['refinement', 'coordination'],
   },
   merge: {
-    id: 'merge-queue',
-    name: 'Merge Queue',
-    description: 'Add approved PRs to the merge queue for automated merging',
+    id: 'pr-merge',
+    name: 'PR Merge',
+    description: 'Handle PR merge operations for approved work',
     tags: ['merge', 'automation'],
   },
   security: {
