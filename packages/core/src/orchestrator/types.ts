@@ -196,13 +196,6 @@ export interface AgentProcess {
   inputTokens?: number
   /** Total output tokens used */
   outputTokens?: number
-  /**
-   * True when the orchestrator's post-acceptance auto-enqueue successfully
-   * handed the PR to the local merge queue. Feeds the acceptance completion
-   * contract's `pr_merged_or_enqueued` check so a "passed" acceptance with
-   * an unmerged, unqueued PR is treated as incomplete (regression).
-   */
-  prEnqueuedForMerge?: boolean
 }
 
 export interface OrchestratorEvents {
