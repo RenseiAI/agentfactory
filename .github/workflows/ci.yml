@@ -25,12 +25,18 @@ jobs:
       pull-requests: write # gitleaks-action posts PR comments on findings
     steps:
       - uses: actions/checkout@v6
-        if: ${{ env.GITLEAKS_LICENSE != '' }}
+        # gitleaks-action errors on the merge_group event ("not yet supported").
+        # It already scanned the PR's commits on pull_request, so skip here — the
+        # Secret Scan job still reports success so the merge queue can proceed.
+        if: ${{ env.GITLEAKS_LICENSE != '' && github.event_name != 'merge_group' }}
         with:
           fetch-depth: 0
 
       - uses: gitleaks/gitleaks-action@v3
-        if: ${{ env.GITLEAKS_LICENSE != '' }}
+        # gitleaks-action errors on the merge_group event ("not yet supported").
+        # It already scanned the PR's commits on pull_request, so skip here — the
+        # Secret Scan job still reports success so the merge queue can proceed.
+        if: ${{ env.GITLEAKS_LICENSE != '' && github.event_name != 'merge_group' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
