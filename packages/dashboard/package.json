@@ -52,9 +52,9 @@
     "@radix-ui/react-tooltip": "^1.2.9",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
-    "lucide-react": "^0.400.0",
+    "lucide-react": "^1.17.0",
     "swr": "^2.4.1",
-    "tailwind-merge": "^2.2.0"
+    "tailwind-merge": "^3.6.0"
   },
   "peerDependencies": {
     "next": ">=14.0.0",
