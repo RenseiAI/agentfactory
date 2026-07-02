@@ -560,9 +560,9 @@ export async function cleanupExpiredLocksWithPendingWork(): Promise<number> {
 }
 
 // Statuses where a session should NOT be holding an issue lock.
-// Terminal: session finished (completed/failed/stopped) but lock release failed.
+// Terminal: session finished (completed/failed/stopped/timed_out) but lock release failed.
 // Pending: session was reset by orphan cleanup but lock wasn't released (see orphan-cleanup.ts).
-const STALE_LOCK_STATUSES = new Set(['completed', 'failed', 'stopped', 'pending'])
+const STALE_LOCK_STATUSES = new Set(['completed', 'failed', 'stopped', 'timed_out', 'pending'])
 
 /**
  * Release issue locks held by sessions that should no longer hold them.

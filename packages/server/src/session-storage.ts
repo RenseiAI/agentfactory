@@ -18,6 +18,7 @@ const log = {
  * - completed: Agent finished successfully (all cleanup done)
  * - failed: Agent encountered an error
  * - stopped: Agent was stopped by user
+ * - timed_out: Agent exceeded its allotted execution time
  */
 export type AgentSessionStatus =
   | 'pending'
@@ -27,6 +28,7 @@ export type AgentSessionStatus =
   | 'completed'
   | 'failed'
   | 'stopped'
+  | 'timed_out'
 
 /**
  * Agent session state stored in Redis for distributed access
@@ -447,7 +449,7 @@ export async function touchSessionHeartbeat(
 
   // Only refresh non-terminal rows. Touching a terminal row would resurrect a
   // dead session's freshness and could mask a genuine strand.
-  if (existing.status === 'completed' || existing.status === 'failed' || existing.status === 'stopped') {
+  if (existing.status === 'completed' || existing.status === 'failed' || existing.status === 'stopped' || existing.status === 'timed_out') {
     return false
   }
 

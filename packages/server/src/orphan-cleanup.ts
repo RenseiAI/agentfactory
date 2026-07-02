@@ -45,6 +45,7 @@ const TERMINAL_STATUSES = new Set<AgentSessionState['status']>([
   'completed',
   'failed',
   'stopped',
+  'timed_out',
 ])
 
 /**

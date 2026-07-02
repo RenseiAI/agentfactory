@@ -101,7 +101,7 @@ export class A2aTaskMap {
 /**
  * Map AgentFactory session status to A2A task status.
  *
- * AgentFactory statuses: pending, claimed, running, finalizing, completed, failed, stopped
+ * AgentFactory statuses: pending, claimed, running, finalizing, completed, failed, stopped, timed_out
  * A2A statuses: submitted, working, input-required, completed, failed, canceled
  */
 export function mapSessionStatusToA2a(status: AgentSessionStatus): A2aTaskStatus {
@@ -115,6 +115,7 @@ export function mapSessionStatusToA2a(status: AgentSessionStatus): A2aTaskStatus
     case 'completed':
       return 'completed'
     case 'failed':
+    case 'timed_out':
       return 'failed'
     case 'stopped':
       return 'canceled'
@@ -283,7 +284,7 @@ export function createA2aCallbackBridge(
     const session = await getSessionState(sessionId)
     if (session) {
       // Cannot cancel already-completed tasks
-      if (session.status === 'completed' || session.status === 'failed') {
+      if (session.status === 'completed' || session.status === 'failed' || session.status === 'timed_out') {
         throw new Error(`Cannot cancel task in ${session.status} state`)
       }
 
