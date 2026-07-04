@@ -565,6 +565,33 @@ export async function cleanupExpiredLocksWithPendingWork(): Promise<number> {
 const STALE_LOCK_STATUSES = new Set(['completed', 'failed', 'stopped', 'timed_out', 'pending'])
 
 /**
+ * Startup grace window for a `pending` lock holder.
+ *
+ * A freshly-dispatched session — especially an on-demand / CLOUD one whose
+ * in-box runner is still provisioning + booting its sandbox — legitimately sits
+ * in `pending` while holding its issue lock. It only flips to `running` once the
+ * runner boots and claims the work. Releasing its lock during that window hands
+ * the issue to another worker and makes the still-booting runner lose ownership
+ * mid-boot: its next heartbeat sees the lost lock (`runtime/heartbeat: session
+ * ownership lost`) and the agent aborts. The observed symptom is the stale-lock
+ * sweep reaping a legitimately-held lock at `lockAge=0` because the session had
+ * not yet left `pending`.
+ *
+ * So a `pending` holder is treated as still-needing-its-lock until its lock is
+ * OLDER than this window. TERMINAL holders (completed/failed/stopped/timed_out)
+ * are unaffected — they release immediately, as before.
+ *
+ * Sized to cover the cloud sandbox provision+boot budget. The platform
+ * provisioner mints an on-demand worker registration token with a 10-minute TTL
+ * ("enough time to boot + register"), which is the authoritative boot budget for
+ * a cloud runner, so the grace matches it at 10 minutes. This does NOT weaken
+ * genuine orphan cleanup: a truly-orphaned pending session (whose explicit lock
+ * release in orphan-cleanup.ts failed) carries a lock far older than the grace
+ * and is STILL reaped here; the lock's 2h TTL remains the hard backstop.
+ */
+const PENDING_LOCK_STARTUP_GRACE_MS = 10 * 60 * 1000 // 10 min — cloud boot+register budget
+
+/**
  * Release issue locks held by sessions that should no longer hold them.
  *
  * This handles cases where:
@@ -617,6 +644,31 @@ export async function cleanupStaleLocksWithIdleWorkers(
       }
 
       if (STALE_LOCK_STATUSES.has(session.status)) {
+        // A `pending` holder in its normal startup window still needs its lock:
+        // a cloud runner is still provisioning + booting before it flips the
+        // session to `running` and claims. Only reap a `pending` lock once it is
+        // OLDER than the startup grace budget — a genuinely-orphaned pending
+        // session's lock is far older than this and is still reaped below. This
+        // is the fix for the cloud pending→running startup window; terminal
+        // holders deliberately skip the grace and release immediately.
+        const lockAgeMs = Date.now() - lock.lockedAt
+        if (
+          session.status === 'pending' &&
+          lockAgeMs < PENDING_LOCK_STARTUP_GRACE_MS
+        ) {
+          log.debug(
+            'Skipping stale-lock release: pending session within startup grace',
+            {
+              issueId,
+              sessionId: lock.sessionId,
+              issueIdentifier: lock.issueIdentifier,
+              lockAgeMs,
+              graceMs: PENDING_LOCK_STARTUP_GRACE_MS,
+            }
+          )
+          continue
+        }
+
         log.info('Releasing stale lock (session no longer needs lock)', {
           issueId,
           sessionId: lock.sessionId,

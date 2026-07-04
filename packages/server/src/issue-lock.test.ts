@@ -31,6 +31,8 @@ import {
   clearAllParkedWork,
   parkWorkForIssue,
   promoteNextPendingWork,
+  cleanupStaleLocksWithIdleWorkers,
+  type IssueLock,
 } from './issue-lock.js'
 import {
   isRedisConfigured,
@@ -42,7 +44,10 @@ import {
   redisZAdd,
   redisHSet,
   redisExpire,
+  redisKeys,
+  redisGet,
 } from './redis.js'
+import { getSessionState } from './session-storage.js'
 import type { QueuedWork } from './work-queue.js'
 
 const mockIsRedisConfigured = vi.mocked(isRedisConfigured)
@@ -51,6 +56,9 @@ const mockRedisZCard = vi.mocked(redisZCard)
 const mockRedisZPopMin = vi.mocked(redisZPopMin)
 const mockRedisHGet = vi.mocked(redisHGet)
 const mockRedisHDel = vi.mocked(redisHDel)
+const mockRedisKeys = vi.mocked(redisKeys)
+const mockRedisGet = vi.mocked(redisGet)
+const mockGetSessionState = vi.mocked(getSessionState)
 
 function makeWork(overrides: Partial<QueuedWork> = {}): QueuedWork {
   return {
@@ -120,5 +128,75 @@ describe('clearAllParkedWork', () => {
     mockRedisZPopMin.mockResolvedValue(null)
     const promoted = await promoteNextPendingWork('issue-1')
     expect(promoted).toBeNull()
+  })
+})
+
+describe('cleanupStaleLocksWithIdleWorkers — pending startup grace', () => {
+  const ISSUE_ID = 'issue-cloud'
+  const LOCK_KEY = `issue:lock:${ISSUE_ID}`
+  const TEN_MIN_MS = 10 * 60 * 1000
+
+  function makeLock(overrides: Partial<IssueLock> = {}): IssueLock {
+    return {
+      sessionId: 'cloud-session-1',
+      workType: 'development',
+      workerId: null,
+      lockedAt: Date.now(),
+      issueIdentifier: 'SUP-200',
+      ...overrides,
+    }
+  }
+
+  function stubSession(status: string) {
+    // cleanupStaleLocksWithIdleWorkers only reads `session.status`.
+    mockGetSessionState.mockResolvedValue({ status } as never)
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisKeys.mockResolvedValue([LOCK_KEY])
+    // No parked work to promote → promoteNextPendingWork returns null and never
+    // issues its own redisDel, so the only possible redisDel is the lock release.
+    mockRedisZPopMin.mockResolvedValue(null)
+    mockRedisDel.mockResolvedValue(1)
+  })
+
+  it('KEEPS the lock of a freshly-dispatched pending cloud session within the startup grace window', async () => {
+    // A cloud session dispatched moments ago: still `pending` while its in-box
+    // runner provisions + boots. lockAge ≈ 0 — this is the live mis-reap case.
+    mockRedisGet.mockResolvedValue(makeLock({ lockedAt: Date.now() }) as never)
+    stubSession('pending')
+
+    const promoted = await cleanupStaleLocksWithIdleWorkers(true)
+
+    // Lock must NOT be released during the startup window.
+    expect(mockRedisDel).not.toHaveBeenCalledWith(LOCK_KEY)
+    expect(promoted).toBe(0)
+  })
+
+  it('STILL reaps a genuinely-stale pending session whose lock is older than the grace window', async () => {
+    // A truly-orphaned pending session (its explicit lock release failed): the
+    // lock is far older than the 10-min boot budget → must still be reaped.
+    mockRedisGet.mockResolvedValue(
+      makeLock({ lockedAt: Date.now() - (TEN_MIN_MS + 60_000) }) as never
+    )
+    stubSession('pending')
+
+    await cleanupStaleLocksWithIdleWorkers(true)
+
+    // Lock IS released — genuine orphan cleanup is preserved.
+    expect(mockRedisDel).toHaveBeenCalledWith(LOCK_KEY)
+  })
+
+  it('reaps a terminal (completed) holder immediately regardless of lock age', async () => {
+    // Terminal holders skip the grace — a fresh lock held by a finished session
+    // is still pure waste and released at once.
+    mockRedisGet.mockResolvedValue(makeLock({ lockedAt: Date.now() }) as never)
+    stubSession('completed')
+
+    await cleanupStaleLocksWithIdleWorkers(true)
+
+    expect(mockRedisDel).toHaveBeenCalledWith(LOCK_KEY)
   })
 })
