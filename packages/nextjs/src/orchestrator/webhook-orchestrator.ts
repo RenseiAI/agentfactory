@@ -121,7 +121,7 @@ async function emitAgentErrorActivity(
 
     if (sessionId) {
       const session = createAgentSession({
-        client: client.linearClient,
+        client,
         issueId,
         sessionId,
         autoTransition: false,

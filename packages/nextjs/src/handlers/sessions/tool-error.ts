@@ -91,7 +91,7 @@ export function createSessionToolErrorHandler(config: RouteConfig) {
         const linearClient = await config.linearClient.getClient(session.organizationId)
 
         const agentSession = createAgentSession({
-          client: linearClient.linearClient,
+          client: linearClient,
           issueId: session.issueId,
           sessionId: linearSessionId,
           autoTransition: false,

@@ -4,7 +4,12 @@
  */
 
 import { NextResponse } from 'next/server'
-import { getAllSessions, type AgentSessionState, createLogger } from '@donmai/server'
+import {
+  getAllSessions,
+  type AgentSessionState,
+  type AgentSessionStatus,
+  createLogger,
+} from '@donmai/server'
 
 const log = createLogger('api/sessions')
 
@@ -18,7 +23,7 @@ export interface AgentSessionResponse {
   identifier: string
   providerSessionId?: string
   provider?: string
-  status: 'pending' | 'claimed' | 'running' | 'finalizing' | 'completed' | 'failed' | 'stopped'
+  status: AgentSessionStatus
   createdAt: string
   updatedAt: string
   worktreePath: string
