@@ -30,7 +30,7 @@ Manage the lifecycle of an agent working on an issue:
 import { createAgentSession } from '@donmai/plugin-linear'
 
 const session = createAgentSession({
-  client: linearClient.linearClient,
+  client: linearClient,
   issueId: 'issue-uuid',
   autoTransition: true,
   workType: 'development',

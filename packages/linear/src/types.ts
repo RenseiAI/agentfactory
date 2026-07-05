@@ -1,4 +1,4 @@
-import type { LinearClient } from '@linear/sdk'
+import type { LinearAgentClient } from './agent-client.js'
 import type { ToolCategory } from '@donmai/core'
 
 /**
@@ -552,7 +552,15 @@ export interface StatusMapping {
  * Configuration for creating/managing an agent session
  */
 export interface AgentSessionConfig {
-  client: LinearClient
+  /**
+   * The high-level LinearAgentClient wrapper — NOT the raw @linear/sdk
+   * LinearClient. AgentSession relies on wrapper-only methods such as
+   * getIssue(), updateIssueStatus(), createComment(), createAgentActivity()
+   * and createAgentSessionOnIssue(), none of which exist on the raw SDK
+   * client. Pass the wrapper (e.g. `createLinearAgentClient(...)`), not its
+   * `.linearClient` getter.
+   */
+  client: LinearAgentClient
   issueId: string
   sessionId?: string
   autoTransition?: boolean

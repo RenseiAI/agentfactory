@@ -69,7 +69,7 @@ export class AgentSession {
   }> = []
 
   constructor(config: AgentSessionConfig) {
-    this.client = config.client as unknown as LinearAgentClient
+    this.client = config.client
     this.issueId = config.issueId
     this.sessionId = config.sessionId ?? null
     this.autoTransition = config.autoTransition ?? true

@@ -272,7 +272,12 @@ export class LinearIssueTrackerClient implements IssueTrackerClient {
 
   createSession(config: SessionConfig): IssueTrackerSession {
     const session = createAgentSession({
-      client: this.linearClient.linearClient,
+      // Pass the LinearAgentClient wrapper, NOT its `.linearClient` getter
+      // (the raw @linear/sdk client). AgentSession calls wrapper-only methods
+      // like getIssue()/updateIssueStatus(); the raw SDK client only exposes
+      // issue()/issues()/etc., so `.linearClient` here caused a runtime
+      // "this.client.getIssue is not a function" crash on session start.
+      client: this.linearClient,
       issueId: config.issueId,
       sessionId: config.sessionId,
       autoTransition: config.autoTransition ?? false,
