@@ -593,12 +593,16 @@ const STALE_LOCK_STATUSES = new Set(['completed', 'failed', 'stopped', 'timed_ou
  * provision, repo clone, kit toolchain install (e.g. pnpm install on a large repo),
  * Claude cold start, and the agent's first turn. If this grace equalled the 10-min
  * boot budget, a run whose boot consumed most of that allowance would be reaped
- * before first activity — and a still-`pending` runner has NO recovery path (its
- * heartbeat lock-refresh only refreshes TTL, and the platform re-acquire fallback
- * is gated to claimed/running/finalizing), so the reap is terminal: the next
- * heartbeat sees the lost lock and the agent aborts with "session ownership lost"
- * mid-boot. We therefore size the grace to the boot budget PLUS a generous
- * post-register first-activity budget.
+ * before first activity. Such a reap is NOT unconditionally terminal: the platform
+ * heartbeat lock-refresh's re-acquire branch (lock-refresh/route.ts) DOES include
+ * 'pending' in its allow-list (alongside claimed/running/finalizing) and re-stamps
+ * lockedAt via acquireIssueLock — but that acquire is a SET NX, so it only fires
+ * when the lock is FREE. A reaped pending lock is therefore recoverable on the very
+ * next heartbeat UNLESS a parked sibling was promoted into the freed slot first, in
+ * which case the SET NX fails and the reap IS terminal (the next heartbeat sees the
+ * lost lock and the agent aborts with "session ownership lost" mid-boot). Sizing the
+ * grace generously means we never lean on that recovery race, so we size it to the
+ * boot budget PLUS a generous post-register first-activity budget.
  *
  * This does NOT weaken genuine orphan cleanup: a truly-orphaned pending session
  * (whose explicit lock release in orphan-cleanup.ts failed) carries a lock far
@@ -612,6 +616,15 @@ const STALE_LOCK_STATUSES = new Set(['completed', 'failed', 'stopped', 'timed_ou
  * dispatch+budget. That needs a register/heartbeat hook wired through the platform
  * lock-refresh route (cross-repo) and would break genuine orphan cleanup unless it
  * fires exactly once, so it is out of scope for this minimal sizing fix.
+ *
+ * WARNING for that followup: any boot-deadline/lockedAt reset MUST be gated to a
+ * fire-once, lock-free / first-register condition (e.g. the SET NX re-acquire branch
+ * in lock-refresh/route.ts, which only fires on a FREE lock). It must NOT be added to
+ * the steady-state refresh-TTL branch (the `existing?.sessionId === sessionId` path
+ * that only calls redisExpire). A stuck-`pending` session heartbeats on that branch
+ * every ~30s while still holding its own lock; re-stamping lockedAt there would reset
+ * the grace clock on every heartbeat, so this reaper's pending-grace check would never
+ * fire and the session would indefinitely defer its own reap until the 2h TTL backstop.
  */
 const PENDING_LOCK_STARTUP_GRACE_MS = 25 * 60 * 1000 // boot budget (~10 min) + post-register first-activity budget
 
