@@ -116,10 +116,10 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@donmai/architectural-intelligence": "workspace:*",
     "@donmai/core": "workspace:*",
     "@donmai/plugin-linear": "workspace:*",
     "@donmai/server": "workspace:*",
-    "@donmai/architectural-intelligence": "workspace:*",
     "dotenv": "^17.4.2"
   },
   "optionalDependencies": {
@@ -128,7 +128,7 @@
   "devDependencies": {
     "@types/node": "^22.5.4",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.3"
+    "vitest": "^3.2.7"
   },
   "scripts": {
     "build": "tsc",

@@ -1,3 +1,22 @@
 packages:
   - 'packages/*'
   - 'packages/kits/*'
+
+# Dependabot remediation (2026-07-06): pnpm overrides force patched transitive
+# versions across the whole graph. All entries below are dev/build tooling
+# except postcss, which is a runtime dep. pnpm overrides apply to every
+# installed version matching the range key.
+overrides:
+  # HIGHx3 + MEDx2: vite path-traversal / fs.deny bypass class - fixed >=7.3.5.
+  # Pin 7.3.6 (not 7.3.5) so the esbuild ^0.28 override stays compatible:
+  # vite 7.3.5 caps esbuild at ^0.27.0, but 7.3.6 allows ^0.27.0 || ^0.28.0.
+  'vite@>=7.0.0 <7.3.5': '7.3.6'
+  # HIGH: rollup - fixed >=4.59.0. Scoped to the 4.x line that vite pulls in.
+  'rollup@>=4.0.0 <4.59.0': '4.62.2'
+  # LOW (GHSA-gv7w-rqvm-qjhr): esbuild missing binary integrity check - fixed >=0.28.1.
+  esbuild: '>=0.28.1'
+  # MEDIUM: picomatch 4.x ReDoS - fixed 4.0.4. Scoped to the 4.x branch
+  # (the separate 2.3.2 line is already the patched v2 release).
+  'picomatch@>=4.0.0 <4.0.4': '4.0.4'
+  # MEDIUM (GHSA-qx2v-qp2m-jg93): postcss XSS via unescaped </style> - fixed 8.5.10. RUNTIME.
+  'postcss@<8.5.10': '8.5.15'

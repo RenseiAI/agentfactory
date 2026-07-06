@@ -35,14 +35,14 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "@donmai/server": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.5.4",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.3"
+    "vitest": "^3.2.7"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

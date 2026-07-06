@@ -49,11 +49,10 @@
     "README.md",
     "LICENSE"
   ],
-  "dependencies": {},
   "devDependencies": {
     "@types/node": "^22.5.4",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.3"
+    "vitest": "^3.2.7"
   },
   "scripts": {
     "build": "tsc",
