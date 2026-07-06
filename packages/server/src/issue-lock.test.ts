@@ -134,7 +134,9 @@ describe('clearAllParkedWork', () => {
 describe('cleanupStaleLocksWithIdleWorkers — pending startup grace', () => {
   const ISSUE_ID = 'issue-cloud'
   const LOCK_KEY = `issue:lock:${ISSUE_ID}`
-  const TEN_MIN_MS = 10 * 60 * 1000
+  // Mirrors PENDING_LOCK_STARTUP_GRACE_MS in issue-lock.ts (boot budget +
+  // post-register first-activity budget). Kept in sync manually.
+  const GRACE_MS = 25 * 60 * 1000
 
   function makeLock(overrides: Partial<IssueLock> = {}): IssueLock {
     return {
@@ -177,9 +179,9 @@ describe('cleanupStaleLocksWithIdleWorkers — pending startup grace', () => {
 
   it('STILL reaps a genuinely-stale pending session whose lock is older than the grace window', async () => {
     // A truly-orphaned pending session (its explicit lock release failed): the
-    // lock is far older than the 10-min boot budget → must still be reaped.
+    // lock is far older than the startup grace window → must still be reaped.
     mockRedisGet.mockResolvedValue(
-      makeLock({ lockedAt: Date.now() - (TEN_MIN_MS + 60_000) }) as never
+      makeLock({ lockedAt: Date.now() - (GRACE_MS + 60_000) }) as never
     )
     stubSession('pending')
 

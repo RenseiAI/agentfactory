@@ -581,15 +581,39 @@ const STALE_LOCK_STATUSES = new Set(['completed', 'failed', 'stopped', 'timed_ou
  * OLDER than this window. TERMINAL holders (completed/failed/stopped/timed_out)
  * are unaffected — they release immediately, as before.
  *
- * Sized to cover the cloud sandbox provision+boot budget. The platform
- * provisioner mints an on-demand worker registration token with a 10-minute TTL
- * ("enough time to boot + register"), which is the authoritative boot budget for
- * a cloud runner, so the grace matches it at 10 minutes. This does NOT weaken
- * genuine orphan cleanup: a truly-orphaned pending session (whose explicit lock
- * release in orphan-cleanup.ts failed) carries a lock far older than the grace
- * and is STILL reaped here; the lock's 2h TTL remains the hard backstop.
+ * SIZING — this grace must cover dispatch→first-activity, NOT just boot.
+ * `lock.lockedAt` is stamped ONCE at DISPATCH (see dispatchWork /
+ * promoteNextPendingWork) and is never reset afterwards — not by register, not by
+ * claim, not by the status='running' POST, and not by the heartbeat TTL refresh
+ * (refreshIssueLockTTL only calls redisExpire) — so this grace clock runs from
+ * dispatch. The platform provisioner mints the on-demand worker registration token
+ * with a ~10-minute TTL ("enough time to boot + register"), but that is only the
+ * BOOT budget. The pending→running flip does not fire until the runner's FIRST
+ * successful activity POST, and reaching that point additionally requires: E2B box
+ * provision, repo clone, kit toolchain install (e.g. pnpm install on a large repo),
+ * Claude cold start, and the agent's first turn. If this grace equalled the 10-min
+ * boot budget, a run whose boot consumed most of that allowance would be reaped
+ * before first activity — and a still-`pending` runner has NO recovery path (its
+ * heartbeat lock-refresh only refreshes TTL, and the platform re-acquire fallback
+ * is gated to claimed/running/finalizing), so the reap is terminal: the next
+ * heartbeat sees the lost lock and the agent aborts with "session ownership lost"
+ * mid-boot. We therefore size the grace to the boot budget PLUS a generous
+ * post-register first-activity budget.
+ *
+ * This does NOT weaken genuine orphan cleanup: a truly-orphaned pending session
+ * (whose explicit lock release in orphan-cleanup.ts failed) carries a lock far
+ * older than this window and is STILL reaped here; the lock's 2h TTL remains the
+ * hard backstop. The only cost of the larger window is that a genuinely-dead
+ * pending holder waits longer for PROACTIVE cleanup before the TTL expires.
+ *
+ * FOLLOWUP (more-correct variant, deferred — not a single-package change): stamp a
+ * separate boot-deadline field (or reset lockedAt) when the box first
+ * registers/heartbeats, so the grace keys off boot-complete rather than a fixed
+ * dispatch+budget. That needs a register/heartbeat hook wired through the platform
+ * lock-refresh route (cross-repo) and would break genuine orphan cleanup unless it
+ * fires exactly once, so it is out of scope for this minimal sizing fix.
  */
-const PENDING_LOCK_STARTUP_GRACE_MS = 10 * 60 * 1000 // 10 min — cloud boot+register budget
+const PENDING_LOCK_STARTUP_GRACE_MS = 25 * 60 * 1000 // boot budget (~10 min) + post-register first-activity budget
 
 /**
  * Release issue locks held by sessions that should no longer hold them.
