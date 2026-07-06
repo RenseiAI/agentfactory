@@ -20,7 +20,7 @@
         <spring-ai-agents.version>0.10.0-SNAPSHOT</spring-ai-agents.version>
         <spring-ai-bench.version>0.2.0-SNAPSHOT</spring-ai-bench.version>
         <spring-boot.version>3.4.3</spring-boot.version>
-        <jackson.version>2.18.3</jackson.version>
+        <jackson.version>2.18.8</jackson.version>
         <junit.version>5.11.4</junit.version>
     </properties>
 
@@ -63,7 +63,7 @@
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <version>3.27.3</version>
+            <version>3.27.7</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
