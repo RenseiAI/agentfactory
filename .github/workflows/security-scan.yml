@@ -9,7 +9,7 @@ jobs:
 
   dependency-audit:
     name: Dependency audit (pnpm, report-only)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -19,7 +19,7 @@ jobs:
         run: pnpm audit --audit-level=high || echo "::warning::pnpm audit reported advisories (report-only; see Security Remediation plan)"
   semgrep:
     name: SAST (semgrep, report-only)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
