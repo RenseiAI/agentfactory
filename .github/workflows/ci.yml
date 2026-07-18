@@ -174,8 +174,6 @@ jobs:
     name: Test
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [build]
-    env:
-      NODE_OPTIONS: --experimental-sqlite
     steps:
       - uses: actions/checkout@v6
 
@@ -188,7 +186,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # Scope NODE_OPTIONS to the test step only. Setting it at the job level
+      # leaks --experimental-sqlite into pnpm/action-setup's self-installer,
+      # which runs on the runner's system node and rejects the flag
+      # ("--experimental-sqlite is not allowed in NODE_OPTIONS", exit 9).
+      # By this step setup-node has installed Node 22, which accepts it.
       - run: pnpm test
+        env:
+          NODE_OPTIONS: --experimental-sqlite
 
   quality-ratchet:
     name: Quality Ratchet
