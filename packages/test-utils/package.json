@@ -12,7 +12,7 @@
   "devDependencies": {
     "@donmai/core": "workspace:*",
     "@donmai/plugin-linear": "workspace:*",
-    "typescript": "^5.7.3",
-    "vitest": "^3.2.7"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }
