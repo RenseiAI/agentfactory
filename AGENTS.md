@@ -56,10 +56,15 @@ When a row matches, read that doc before your next edit and follow it literally.
 
 ```bash
 pnpm build       # turbo run build — run before test (turbo's test task depends on it)
-pnpm typecheck   # turbo run typecheck — the type gate; lint and test do NOT type-check
+pnpm typecheck   # turbo run typecheck — the type gate; test does NOT type-check
 pnpm test        # turbo run test — CI runs it with NODE_OPTIONS=--experimental-sqlite
-pnpm lint        # turbo run lint
 ```
+
+There is no `pnpm lint` gate: no package in this monorepo ships a `lint`
+script, and no eslint/biome config or dependency exists anywhere in the repo.
+An empty `turbo run lint` pipeline previously exited 0 with "0 successful, 0
+total" — a gate that looked green while checking nothing. Don't reintroduce
+it without also wiring real lint config/deps for the packages it would cover.
 
 CI (`.github/workflows/ci.yml`) additionally runs: gitleaks secret scan,
 license-check (`license-checker-rseidelsohn --onlyAllow "$(cat
