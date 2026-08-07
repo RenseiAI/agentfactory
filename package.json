@@ -22,7 +22,6 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "dev": "turbo run dev",
-    "lint": "turbo run lint",
     "clean": "turbo run clean",
     "donmai-libraries": "node --import tsx packages/cli/src/index.ts",
     "af-agent": "node --import tsx packages/cli/src/agent.ts",
