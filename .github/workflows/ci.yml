@@ -24,7 +24,7 @@ jobs:
       contents: read
       pull-requests: write # gitleaks-action posts PR comments on findings
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         # gitleaks-action errors on the merge_group event ("not yet supported").
         # It already scanned the PR's commits on pull_request, so skip here — the
         # Secret Scan job still reports success so the merge queue can proceed.
@@ -47,11 +47,11 @@ jobs:
     name: License Compliance
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -71,7 +71,7 @@ jobs:
     env:
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: ${{ env.FOSSA_API_KEY != '' }}
 
       - uses: fossas/fossa-action@main
@@ -86,7 +86,7 @@ jobs:
     env:
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: ${{ env.FOSSA_API_KEY != '' }}
 
       - uses: fossas/fossa-action@main
@@ -102,7 +102,7 @@ jobs:
     env:
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: ${{ env.FOSSA_API_KEY != '' }}
 
       - name: Install FOSSA CLI
@@ -136,11 +136,11 @@ jobs:
     name: Typecheck
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -153,11 +153,11 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [typecheck]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -175,11 +175,11 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [build]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -200,7 +200,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [build]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Check if quality ratchet is configured
         id: ratchet-check
@@ -212,10 +212,10 @@ jobs:
             echo "Quality ratchet not configured — skipping"
           fi
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.0.9
         if: steps.ratchet-check.outputs.exists == 'true'
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.ratchet-check.outputs.exists == 'true'
         with:
           node-version: 22
