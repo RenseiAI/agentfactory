@@ -1,5 +1,15 @@
 # @donmai/code-intelligence
 
+> **DEPRECATED.** This package is deprecated. The code-intelligence engine is now
+> implemented natively in Go inside the `donmai` binary, and this TypeScript
+> package has no live runtime consumer. It is preserved (not removed) for OSS
+> continuity because downstream npm consumers may pin it, but it will receive no
+> further feature work and will be removed in a future major. New work should
+> target the native Go surface: the `donmai code` subcommands (`get-repo-map`,
+> `search-symbols`, `search-code`, `check-duplicate`, `find-type-usages`,
+> `validate-cross-deps`) or the `donmai mcp code-intel` MCP server (server name
+> `af-code-intelligence`), which expose the same `af_code_*` tools.
+
 Code intelligence for Donmai agents — regex-based symbol extraction, BM25 search, incremental Merkle-tree indexing, PageRank repo maps, and memory deduplication.
 
 Part of the [Donmai](https://github.com/RenseiAI/donmai-libraries) monorepo.

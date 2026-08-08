@@ -2,7 +2,8 @@
   "name": "@donmai/code-intelligence",
   "version": "0.9.0",
   "type": "module",
-  "description": "Code intelligence for Donmai. Tree-sitter AST parsing, BM25 search, incremental indexing, memory deduplication",
+  "description": "DEPRECATED — Code Intelligence for Donmai (TypeScript). Superseded by the native Go code-intelligence engine in the donmai binary (`donmai code`, `donmai mcp code-intel`); preserved for OSS continuity / downstream pins only.",
+  "deprecated": "@donmai/code-intelligence is deprecated and will be removed in a future major. The code-intelligence engine is now native Go inside the donmai binary — use the `donmai code` subcommands or the `donmai mcp code-intel` MCP server (server name af-code-intelligence). This package is preserved for OSS continuity / downstream pins only and receives no further feature work.",
   "author": "Rensei AI (https://rensei.ai)",
   "license": "MIT",
   "engines": {
