@@ -22,7 +22,10 @@ jobs:
 
   publish:
     name: Publish to npm and GitHub Packages
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # MUST stay github-hosted: npm rejects --provenance from self-hosted runner
+    # environments (422 "Unsupported GitHub Actions runner environment"), and
+    # Blacksmith runners present as self-hosted to sigstore.
+    runs-on: ubuntu-latest
     needs: [ci]
     permissions:
       contents: write
