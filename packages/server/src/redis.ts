@@ -11,10 +11,67 @@ let _redis: Redis | null = null
 
 /**
  * Parse Redis URL using the modern URL class to avoid deprecated url.parse()
- * Supports redis:// and rediss:// (TLS) protocols
+ * Supports redis:// and rediss:// (TLS) protocols.
+ *
+ * Managed-Redis consoles hand out passwords containing URL metacharacters
+ * (`/`, `+`, `%`, `@`, `:`). Percent-encoded userinfo is the spec-correct form
+ * and is tried first; when the strict parse rejects the URL (raw `/` in the
+ * password makes `new URL` throw ERR_INVALID_URL; a stray `%` makes
+ * `decodeURIComponent` throw URIError), fall back to splitting userinfo on the
+ * LAST `@` and taking the credentials literally, so an unencoded password
+ * copied straight from a provider console still connects.
  */
-function parseRedisUrl(redisUrl: string): RedisOptions {
+export function parseRedisUrl(redisUrl: string): RedisOptions {
+  try {
+    return parseStrict(redisUrl)
+  } catch (err) {
+    const fallback = parseWithLiteralUserinfo(redisUrl)
+    if (fallback) return fallback
+    // No credential material in the message — the URL embeds the password.
+    throw new Error(
+      'Invalid REDIS_URL: expected redis[s]://[user[:password]@]host[:port][/db][?family=4|6]. ' +
+        'If the password contains special characters (/ + % @ : #), percent-encode it (encodeURIComponent).',
+      { cause: err },
+    )
+  }
+}
+
+/** Spec-compliant parse: WHATWG URL with percent-decoded userinfo. */
+function parseStrict(redisUrl: string): RedisOptions {
   const url = new URL(redisUrl)
+  return buildOptions(url, {
+    username: url.username ? decodeURIComponent(url.username) : '',
+    password: url.password ? decodeURIComponent(url.password) : '',
+  })
+}
+
+/**
+ * Tolerant parse for unencoded credentials: split scheme://userinfo@rest on
+ * the LAST `@` (passwords may contain `@`), take username/password literally
+ * (first `:` delimits them — passwords may contain `:`), and parse
+ * host/port/db/query from the credential-free remainder strictly.
+ * Returns null when the remainder is not a valid URL either.
+ */
+function parseWithLiteralUserinfo(redisUrl: string): RedisOptions | null {
+  const match = redisUrl.match(/^(rediss?):\/\/(.*)@([^@]*)$/)
+  if (!match) return null
+  const [, scheme, userinfo, rest] = match
+
+  let url: URL
+  try {
+    url = new URL(`${scheme}://${rest}`)
+  } catch {
+    return null
+  }
+
+  const colon = userinfo.indexOf(':')
+  const username = colon === -1 ? userinfo : userinfo.slice(0, colon)
+  const password = colon === -1 ? '' : userinfo.slice(colon + 1)
+  return buildOptions(url, { username, password })
+}
+
+/** Shared option assembly for both parse paths. */
+function buildOptions(url: URL, creds: { username: string; password: string }): RedisOptions {
   const options: RedisOptions = {}
 
   if (url.hostname) {
@@ -25,12 +82,12 @@ function parseRedisUrl(redisUrl: string): RedisOptions {
     options.port = parseInt(url.port, 10)
   }
 
-  if (url.username && url.username !== 'default') {
-    options.username = decodeURIComponent(url.username)
+  if (creds.username && creds.username !== 'default') {
+    options.username = creds.username
   }
 
-  if (url.password) {
-    options.password = decodeURIComponent(url.password)
+  if (creds.password) {
+    options.password = creds.password
   }
 
   // Database number from path (e.g., redis://host/0)
