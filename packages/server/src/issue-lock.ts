@@ -20,7 +20,9 @@ import {
   redisSet,
   redisZAdd,
   redisZRem,
+  redisZRangeByScore,
   redisZPopMin,
+  redisCompareAndRemoveSortedHashMember,
   redisZCard,
   redisHSet,
   redisHGet,
@@ -30,8 +32,15 @@ import {
   redisKeys,
 } from './redis.js'
 import { queueWork, type QueuedWork } from './work-queue.js'
-import { getSessionState } from './session-storage.js'
+import { getSessionState, type AgentSessionState } from './session-storage.js'
 import type { AgentWorkType } from './types.js'
+import {
+  evaluateCleanupMutationPolicy,
+  type BeforeCleanupMutation,
+  type CleanupMutationAction,
+  type CleanupMutationDecision,
+  type CleanupMutationReason,
+} from './cleanup-mutation-policy.js'
 
 const log = {
   info: (msg: string, data?: Record<string, unknown>) => console.log(`[issue-lock] ${msg}`, data ? JSON.stringify(data) : ''),
@@ -69,6 +78,63 @@ export interface DispatchResult {
   dispatched: boolean
   parked: boolean
   replaced: boolean
+}
+
+export interface IssueLockCleanupCandidate {
+  session?: AgentSessionState
+  sessionId: string
+  issueId: string
+  issueIdentifier: string
+  action: Extract<
+    CleanupMutationAction,
+    'expired_lock_promote' | 'stale_lock_release'
+  >
+  reason: Extract<
+    CleanupMutationReason,
+    'expired_issue_lock' | 'stale_issue_lock'
+  >
+}
+
+/** Optional composing policy for issue-lock maintenance mutations. */
+export interface IssueLockCleanupCallbacks {
+  beforeMutation?: BeforeCleanupMutation
+  onRefused?: (
+    candidate: IssueLockCleanupCandidate,
+    decision: Extract<CleanupMutationDecision, { permitted: false }>
+  ) => void
+}
+
+async function issueLockCleanupPermitted(
+  callbacks: IssueLockCleanupCallbacks | undefined,
+  candidate: IssueLockCleanupCandidate
+): Promise<boolean> {
+  if (!callbacks?.beforeMutation) return true
+
+  const decision = candidate.session
+    ? await evaluateCleanupMutationPolicy(callbacks.beforeMutation, {
+        session: candidate.session,
+        action: candidate.action,
+        reason: candidate.reason,
+        now: Date.now(),
+      })
+    : {
+        permitted: false as const,
+        code: 'pre_mutation_candidate_unresolved',
+        detail: 'candidate session state is unavailable',
+      }
+
+  if (decision.permitted) return true
+
+  try {
+    callbacks.onRefused?.(candidate, decision)
+  } catch (err) {
+    log.warn('Issue-lock cleanup refusal callback failed', {
+      sessionId: candidate.sessionId,
+      action: candidate.action,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  return false
 }
 
 /**
@@ -232,7 +298,8 @@ export async function parkWorkForIssue(
  * @returns The promoted work item, or null if nothing to promote
  */
 export async function promoteNextPendingWork(
-  issueId: string
+  issueId: string,
+  cleanupCallbacks?: IssueLockCleanupCallbacks
 ): Promise<QueuedWork | null> {
   if (!isRedisConfigured()) return null
 
@@ -240,14 +307,32 @@ export async function promoteNextPendingWork(
     const pendingKey = `${PENDING_PREFIX}${issueId}`
     const itemsKey = `${PENDING_ITEMS_PREFIX}${issueId}`
 
-    // Pop the highest-priority (lowest score) member
-    const popped = await redisZPopMin(pendingKey)
-    if (!popped) {
-      log.debug('No pending work to promote', { issueId })
-      return null
+    let dedupMember: string
+    if (cleanupCallbacks?.beforeMutation) {
+      // Inspect without mutating so policy can run before the exact candidate's
+      // first write. Removal below compares the hash bytes atomically, avoiding
+      // authorization of one same-workType item followed by removal of another.
+      const pendingMembers = await redisZRangeByScore(
+        pendingKey,
+        '-inf',
+        '+inf',
+        1
+      )
+      if (pendingMembers.length === 0) {
+        log.debug('No pending work to promote', { issueId })
+        return null
+      }
+      dedupMember = pendingMembers[0]
+    } else {
+      // Preserve the original atomic pop for standalone callers without a
+      // composing policy.
+      const popped = await redisZPopMin(pendingKey)
+      if (!popped) {
+        log.debug('No pending work to promote', { issueId })
+        return null
+      }
+      dedupMember = popped.member
     }
-
-    const dedupMember = popped.member
 
     // Get the work item from the hash
     const workJson = await redisHGet(itemsKey, dedupMember)
@@ -256,10 +341,37 @@ export async function promoteNextPendingWork(
       return null
     }
 
-    // Remove from hash
-    await redisHDel(itemsKey, dedupMember)
-
     const work = JSON.parse(workJson) as QueuedWork
+
+    if (cleanupCallbacks?.beforeMutation) {
+      const session = await getSessionState(work.sessionId)
+      const permitted = await issueLockCleanupPermitted(cleanupCallbacks, {
+        session: session ?? undefined,
+        sessionId: work.sessionId,
+        issueId,
+        issueIdentifier: work.issueIdentifier,
+        action: 'expired_lock_promote',
+        reason: 'expired_issue_lock',
+      })
+      if (!permitted) return null
+
+      const removed = await redisCompareAndRemoveSortedHashMember(
+        pendingKey,
+        itemsKey,
+        dedupMember,
+        workJson
+      )
+      if (!removed) {
+        log.debug('Pending work changed before authorized promotion', {
+          issueId,
+          dedupMember,
+        })
+        return null
+      }
+    } else {
+      // The standalone path already popped from the sorted set above.
+      await redisHDel(itemsKey, dedupMember)
+    }
 
     // Acquire the issue lock for this promoted work
     const lock: IssueLock = {
@@ -512,7 +624,9 @@ export async function isSessionParkedForIssue(
  *
  * Called from orphan-cleanup to handle crashed workers that didn't release locks.
  */
-export async function cleanupExpiredLocksWithPendingWork(): Promise<number> {
+export async function cleanupExpiredLocksWithPendingWork(
+  cleanupCallbacks?: IssueLockCleanupCallbacks
+): Promise<number> {
   if (!isRedisConfigured()) return 0
 
   let promoted = 0
@@ -541,7 +655,7 @@ export async function cleanupExpiredLocksWithPendingWork(): Promise<number> {
             pendingCount: count,
           })
 
-          const work = await promoteNextPendingWork(issueId)
+          const work = await promoteNextPendingWork(issueId, cleanupCallbacks)
           if (work) {
             promoted++
           }
@@ -645,7 +759,8 @@ const PENDING_LOCK_STARTUP_GRACE_MS = 25 * 60 * 1000 // boot budget (~10 min) + 
  * @returns Number of stale locks released and parked work promoted
  */
 export async function cleanupStaleLocksWithIdleWorkers(
-  hasIdleWorkers: boolean
+  hasIdleWorkers: boolean,
+  cleanupCallbacks?: IssueLockCleanupCallbacks
 ): Promise<number> {
   if (!isRedisConfigured()) return 0
   if (!hasIdleWorkers) return 0
@@ -667,6 +782,15 @@ export async function cleanupStaleLocksWithIdleWorkers(
       // Check if the lock holder's session is in a terminal state
       const session = await getSessionState(lock.sessionId)
       if (!session) {
+        const permitted = await issueLockCleanupPermitted(cleanupCallbacks, {
+          sessionId: lock.sessionId,
+          issueId,
+          issueIdentifier: lock.issueIdentifier,
+          action: 'stale_lock_release',
+          reason: 'stale_issue_lock',
+        })
+        if (!permitted) continue
+
         // Session expired from Redis (24h TTL) but lock remains (2h TTL)
         // Safe to release -- the session is long gone
         log.info('Releasing lock for expired session', {
@@ -705,6 +829,16 @@ export async function cleanupStaleLocksWithIdleWorkers(
           )
           continue
         }
+
+        const permitted = await issueLockCleanupPermitted(cleanupCallbacks, {
+          session,
+          sessionId: lock.sessionId,
+          issueId,
+          issueIdentifier: lock.issueIdentifier,
+          action: 'stale_lock_release',
+          reason: 'stale_issue_lock',
+        })
+        if (!permitted) continue
 
         log.info('Releasing stale lock (session no longer needs lock)', {
           issueId,

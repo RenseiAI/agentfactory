@@ -436,6 +436,33 @@ export async function redisZPopMin(
   return null
 }
 
+/**
+ * Atomically remove one specifically inspected sorted-set/hash candidate.
+ * The hash value comparison prevents a same-member replacement from being
+ * removed after the caller authorized the previously observed work item.
+ */
+export async function redisCompareAndRemoveSortedHashMember(
+  sortedSetKey: string,
+  hashKey: string,
+  member: string,
+  expectedHashValue: string
+): Promise<boolean> {
+  const redis = getRedisClient()
+  const result = await redis.eval(
+    `local current = redis.call('HGET', KEYS[2], ARGV[1])
+     if current ~= ARGV[2] then return 0 end
+     if redis.call('ZREM', KEYS[1], ARGV[1]) ~= 1 then return 0 end
+     redis.call('HDEL', KEYS[2], ARGV[1])
+     return 1`,
+    2,
+    sortedSetKey,
+    hashKey,
+    member,
+    expectedHashValue
+  )
+  return result === 1
+}
+
 // ============================================
 // Hash Operations (for work item lookup)
 // ============================================

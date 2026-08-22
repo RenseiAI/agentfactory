@@ -34,6 +34,13 @@ import {
 } from './issue-lock.js'
 import { heartbeatRedisKey } from './session-heartbeat.js'
 import { redisGet } from './redis.js'
+import {
+  evaluateCleanupMutationPolicy,
+  type CleanupMutationAction,
+  type CleanupMutationDecision,
+  type CleanupMutationInput,
+  type CleanupMutationReason,
+} from './cleanup-mutation-policy.js'
 
 const log = createLogger('orphan-cleanup')
 
@@ -214,26 +221,10 @@ export interface OrphanCleanupCallbacks {
   onZombieRecovered?: (session: AgentSessionState) => Promise<void>
 }
 
-export type OrphanCleanupMutationAction =
-  | 'orphan_requeue'
-  | 'zombie_redispatch'
-  | 'stranded_terminalize'
-
-export type OrphanCleanupMutationReason =
-  | 'worker_unreachable'
-  | 'pending_unqueued'
-  | 'dispatch_stranded'
-
-export interface OrphanCleanupMutationInput {
-  session: AgentSessionState
-  action: OrphanCleanupMutationAction
-  reason: OrphanCleanupMutationReason
-  now: number
-}
-
-export type OrphanCleanupMutationDecision =
-  | { permitted: true }
-  | { permitted: false; code: string; detail?: string }
+export type OrphanCleanupMutationAction = CleanupMutationAction
+export type OrphanCleanupMutationReason = CleanupMutationReason
+export type OrphanCleanupMutationInput = CleanupMutationInput
+export type OrphanCleanupMutationDecision = CleanupMutationDecision
 
 export interface OrphanCleanupResult {
   checked: number
@@ -261,26 +252,7 @@ async function evaluateBeforeMutation(
   callbacks: OrphanCleanupCallbacks | undefined,
   input: OrphanCleanupMutationInput
 ): Promise<OrphanCleanupMutationDecision> {
-  if (!callbacks?.beforeMutation) return { permitted: true }
-
-  try {
-    const decision = await callbacks.beforeMutation(input)
-    if (decision.permitted) return decision
-    if (!decision.code.trim()) {
-      return {
-        permitted: false,
-        code: 'pre_mutation_predicate_failed',
-        detail: 'pre-mutation predicate returned an empty refusal code',
-      }
-    }
-    return decision
-  } catch (err) {
-    return {
-      permitted: false,
-      code: 'pre_mutation_predicate_failed',
-      detail: err instanceof Error ? err.message : String(err),
-    }
-  }
+  return evaluateCleanupMutationPolicy(callbacks?.beforeMutation, input)
 }
 
 function recordMutationRefusal(
@@ -476,6 +448,69 @@ export async function cleanupOrphanedSessions(
     worktreePathsToCleanup: [],
   }
 
+  // A refused lifecycle identity stays refused for the remainder of this pass.
+  // This prevents a later lock-maintenance sweep from re-evaluating and then
+  // mutating the same candidate through a different cleanup path.
+  const refusedBySessionId = new Map<
+    string,
+    Extract<OrphanCleanupMutationDecision, { permitted: false }>
+  >()
+  const recordedRefusals = new Set<string>()
+  const sessionIdentity = (session: AgentSessionState): string =>
+    session.rowSessionId || session.trackerSessionId
+
+  const beforeMutation = async (
+    input: OrphanCleanupMutationInput
+  ): Promise<OrphanCleanupMutationDecision> => {
+    const identity = sessionIdentity(input.session)
+    const priorRefusal = refusedBySessionId.get(identity)
+    if (priorRefusal) return priorRefusal
+
+    const decision = await evaluateBeforeMutation(callbacks, input)
+    if (!decision.permitted) refusedBySessionId.set(identity, decision)
+    return decision
+  }
+
+  const recordRefusalOnce = (
+    session: AgentSessionState,
+    decision: Extract<OrphanCleanupMutationDecision, { permitted: false }>
+  ): void => {
+    const identity = sessionIdentity(session)
+    if (recordedRefusals.has(identity)) return
+    recordedRefusals.add(identity)
+    recordMutationRefusal(result, session, decision)
+  }
+
+  const issueLockCleanupCallbacks = callbacks?.beforeMutation
+    ? {
+        beforeMutation,
+        onRefused: (
+          candidate: import('./issue-lock.js').IssueLockCleanupCandidate,
+          decision: Extract<
+            OrphanCleanupMutationDecision,
+            { permitted: false }
+          >
+        ) => {
+          if (candidate.session) {
+            recordRefusalOnce(candidate.session, decision)
+            return
+          }
+
+          if (recordedRefusals.has(candidate.sessionId)) return
+          recordedRefusals.add(candidate.sessionId)
+          refusedBySessionId.set(candidate.sessionId, decision)
+          result.refused++
+          result.details.push({
+            sessionId: candidate.sessionId,
+            issueIdentifier: candidate.issueIdentifier,
+            action: 'refused',
+            refusalCode: decision.code,
+            reason: decision.detail,
+          })
+        },
+      }
+    : undefined
+
   try {
     const sessions = await getAllSessions()
     result.checked = sessions.length
@@ -491,14 +526,14 @@ export async function cleanupOrphanedSessions(
       try {
         const issueIdentifier = session.issueIdentifier || session.issueId.slice(0, 8)
 
-        const decision = await evaluateBeforeMutation(callbacks, {
+        const decision = await beforeMutation({
           session,
           action: 'orphan_requeue',
           reason: 'worker_unreachable',
           now: Date.now(),
         })
         if (!decision.permitted) {
-          recordMutationRefusal(result, session, decision)
+          recordRefusalOnce(session, decision)
           continue
         }
 
@@ -605,14 +640,14 @@ export async function cleanupOrphanedSessions(
         try {
           const issueIdentifier = session.issueIdentifier || session.issueId.slice(0, 8)
 
-          const decision = await evaluateBeforeMutation(callbacks, {
+          const decision = await beforeMutation({
             session,
             action: 'zombie_redispatch',
             reason: 'pending_unqueued',
             now: Date.now(),
           })
           if (!decision.permitted) {
-            recordMutationRefusal(result, session, decision)
+            recordRefusalOnce(session, decision)
             continue
           }
 
@@ -723,14 +758,14 @@ export async function cleanupOrphanedSessions(
             continue
           }
 
-          const decision = await evaluateBeforeMutation(callbacks, {
+          const decision = await beforeMutation({
             session,
             action: 'stranded_terminalize',
             reason: 'dispatch_stranded',
             now: Date.now(),
           })
           if (!decision.permitted) {
-            recordMutationRefusal(result, session, decision)
+            recordRefusalOnce(session, decision)
             continue
           }
 
@@ -774,7 +809,9 @@ export async function cleanupOrphanedSessions(
 
     // Also check for expired issue locks with pending work
     try {
-      const promoted = await cleanupExpiredLocksWithPendingWork()
+      const promoted = await cleanupExpiredLocksWithPendingWork(
+        issueLockCleanupCallbacks
+      )
       if (promoted > 0) {
         log.info('Promoted pending work from expired issue locks', { promoted })
       }
@@ -792,7 +829,10 @@ export async function cleanupOrphanedSessions(
         activeWorkers.some((w) => w.activeCount < w.capacity)
 
       if (hasIdleWorkers) {
-        const promoted = await cleanupStaleLocksWithIdleWorkers(hasIdleWorkers)
+        const promoted = await cleanupStaleLocksWithIdleWorkers(
+          hasIdleWorkers,
+          issueLockCleanupCallbacks
+        )
         if (promoted > 0) {
           log.info('Promoted parked work from stale issue locks', { promoted })
         }
