@@ -240,6 +240,80 @@ describe('cleanupStaleLocksWithIdleWorkers — pending startup grace', () => {
       })
     )
   })
+
+  it('releases a permitted holder but leaves a refused pending candidate untouched', async () => {
+    const pendingWork = makeWork({
+      sessionId: 'parked-session',
+      issueId: ISSUE_ID,
+      issueIdentifier: 'SUP-200',
+    })
+    const holderSession = {
+      trackerSessionId: 'cloud-session-1',
+      rowSessionId: 'cloud-session-1',
+      status: 'completed',
+    }
+    const pendingSession = {
+      trackerSessionId: 'parked-session',
+      rowSessionId: 'parked-session',
+      status: 'pending',
+    }
+    mockRedisGet.mockResolvedValue(makeLock() as never)
+    mockGetSessionState.mockImplementation(async (sessionId: string) =>
+      (sessionId === 'cloud-session-1'
+        ? holderSession
+        : pendingSession) as never
+    )
+    mockRedisZRangeByScore.mockResolvedValue(['qa'])
+    mockRedisZPopMin.mockResolvedValue({ member: 'qa', score: 2 })
+    mockRedisHGet.mockResolvedValue(JSON.stringify(pendingWork))
+    const beforeMutation = vi.fn(async ({ session }) =>
+      session.trackerSessionId === 'cloud-session-1'
+        ? { permitted: true as const }
+        : {
+            permitted: false as const,
+            code: 'restart_fence_held',
+          }
+    )
+    const onRefused = vi.fn()
+
+    const promoted = await cleanupStaleLocksWithIdleWorkers(true, {
+      beforeMutation,
+      onRefused,
+    })
+
+    expect(beforeMutation).toHaveBeenCalledTimes(2)
+    expect(mockRedisDel).toHaveBeenCalledTimes(1)
+    expect(mockRedisDel).toHaveBeenCalledWith(LOCK_KEY)
+    expect(mockRedisCompareAndRemove).not.toHaveBeenCalled()
+    expect(mockRedisHDel).not.toHaveBeenCalled()
+    expect(mockRedisSetNX).not.toHaveBeenCalled()
+    expect(onRefused).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'parked-session',
+        action: 'expired_lock_promote',
+      }),
+      expect.objectContaining({
+        permitted: false,
+        code: 'restart_fence_held',
+      })
+    )
+    expect(promoted).toBe(0)
+  })
+
+  it('keeps standalone missing-session lock cleanup behavior without callbacks', async () => {
+    mockRedisGet.mockResolvedValue(makeLock() as never)
+    mockGetSessionState.mockResolvedValue(null)
+    mockRedisZPopMin.mockResolvedValue(null)
+
+    const promoted = await cleanupStaleLocksWithIdleWorkers(true)
+
+    expect(mockRedisDel).toHaveBeenCalledTimes(1)
+    expect(mockRedisDel).toHaveBeenCalledWith(LOCK_KEY)
+    expect(mockRedisZPopMin).toHaveBeenCalledWith(
+      'issue:pending:issue-cloud'
+    )
+    expect(promoted).toBe(0)
+  })
 })
 
 describe('cleanupExpiredLocksWithPendingWork — pre-mutation policy', () => {

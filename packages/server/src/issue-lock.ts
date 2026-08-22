@@ -799,7 +799,7 @@ export async function cleanupStaleLocksWithIdleWorkers(
           issueIdentifier: lock.issueIdentifier,
         })
         await releaseIssueLock(issueId)
-        const work = await promoteNextPendingWork(issueId)
+        const work = await promoteNextPendingWork(issueId, cleanupCallbacks)
         if (work) promoted++
         continue
       }
@@ -849,7 +849,7 @@ export async function cleanupStaleLocksWithIdleWorkers(
         })
 
         await releaseIssueLock(issueId)
-        const work = await promoteNextPendingWork(issueId)
+        const work = await promoteNextPendingWork(issueId, cleanupCallbacks)
         if (work) {
           promoted++
           log.info('Promoted parked work after stale lock cleanup', {
