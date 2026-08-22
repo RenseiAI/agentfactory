@@ -199,29 +199,103 @@ function isPerDispatchAliasRow(session: AgentSessionState): boolean {
  * Callback for when an orphaned session is re-queued
  */
 export interface OrphanCleanupCallbacks {
+  /**
+   * Authoritative policy hook invoked exactly once before this cleanup pass
+   * performs the first mutation for a candidate. A refusal, thrown error, or
+   * rejected promise fails closed for that candidate and leaves its claim,
+   * lock, queue entry, and session state untouched.
+   */
+  beforeMutation?: (
+    input: OrphanCleanupMutationInput
+  ) => Promise<OrphanCleanupMutationDecision>
   /** Called when an orphaned session is re-queued. Use to post Linear comments, etc. */
   onOrphanRequeued?: (session: AgentSessionState) => Promise<void>
   /** Called when a zombie pending session is recovered. Use to post Linear comments, etc. */
   onZombieRecovered?: (session: AgentSessionState) => Promise<void>
 }
 
+export type OrphanCleanupMutationAction =
+  | 'orphan_requeue'
+  | 'zombie_redispatch'
+  | 'stranded_terminalize'
+
+export type OrphanCleanupMutationReason =
+  | 'worker_unreachable'
+  | 'pending_unqueued'
+  | 'dispatch_stranded'
+
+export interface OrphanCleanupMutationInput {
+  session: AgentSessionState
+  action: OrphanCleanupMutationAction
+  reason: OrphanCleanupMutationReason
+  now: number
+}
+
+export type OrphanCleanupMutationDecision =
+  | { permitted: true }
+  | { permitted: false; code: string; detail?: string }
+
 export interface OrphanCleanupResult {
   checked: number
   orphaned: number
   requeued: number
   failed: number
+  /** Candidates left untouched because the authoritative pre-mutation policy refused. */
+  refused: number
   /** Stranded per-dispatch rows terminal-marked under their own key */
   terminalMarked: number
   details: Array<{
     sessionId: string
     issueIdentifier: string
-    action: 'requeued' | 'failed' | 'terminal-marked'
+    action: 'requeued' | 'failed' | 'terminal-marked' | 'refused'
     reason?: string
+    refusalCode?: string
     /** Path to worktree that may need cleanup (if on worker machine) */
     worktreePath?: string
   }>
   /** Worktree paths that need cleanup on worker machines */
   worktreePathsToCleanup: string[]
+}
+
+async function evaluateBeforeMutation(
+  callbacks: OrphanCleanupCallbacks | undefined,
+  input: OrphanCleanupMutationInput
+): Promise<OrphanCleanupMutationDecision> {
+  if (!callbacks?.beforeMutation) return { permitted: true }
+
+  try {
+    const decision = await callbacks.beforeMutation(input)
+    if (decision.permitted) return decision
+    if (!decision.code.trim()) {
+      return {
+        permitted: false,
+        code: 'pre_mutation_predicate_failed',
+        detail: 'pre-mutation predicate returned an empty refusal code',
+      }
+    }
+    return decision
+  } catch (err) {
+    return {
+      permitted: false,
+      code: 'pre_mutation_predicate_failed',
+      detail: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
+function recordMutationRefusal(
+  result: OrphanCleanupResult,
+  session: AgentSessionState,
+  decision: Extract<OrphanCleanupMutationDecision, { permitted: false }>
+): void {
+  result.refused++
+  result.details.push({
+    sessionId: session.rowSessionId || session.trackerSessionId,
+    issueIdentifier: session.issueIdentifier || session.issueId.slice(0, 8),
+    action: 'refused',
+    refusalCode: decision.code,
+    reason: decision.detail,
+  })
 }
 
 /**
@@ -396,6 +470,7 @@ export async function cleanupOrphanedSessions(
     orphaned: 0,
     requeued: 0,
     failed: 0,
+    refused: 0,
     terminalMarked: 0,
     details: [],
     worktreePathsToCleanup: [],
@@ -415,6 +490,17 @@ export async function cleanupOrphanedSessions(
     for (const session of orphaned) {
       try {
         const issueIdentifier = session.issueIdentifier || session.issueId.slice(0, 8)
+
+        const decision = await evaluateBeforeMutation(callbacks, {
+          session,
+          action: 'orphan_requeue',
+          reason: 'worker_unreachable',
+          now: Date.now(),
+        })
+        if (!decision.permitted) {
+          recordMutationRefusal(result, session, decision)
+          continue
+        }
 
         log.info('Re-queuing orphaned session', {
           sessionId: session.trackerSessionId,
@@ -518,6 +604,17 @@ export async function cleanupOrphanedSessions(
       for (const session of zombies) {
         try {
           const issueIdentifier = session.issueIdentifier || session.issueId.slice(0, 8)
+
+          const decision = await evaluateBeforeMutation(callbacks, {
+            session,
+            action: 'zombie_redispatch',
+            reason: 'pending_unqueued',
+            now: Date.now(),
+          })
+          if (!decision.permitted) {
+            recordMutationRefusal(result, session, decision)
+            continue
+          }
 
           log.info('Re-dispatching zombie pending session', {
             sessionId: session.trackerSessionId,
@@ -626,6 +723,17 @@ export async function cleanupOrphanedSessions(
             continue
           }
 
+          const decision = await evaluateBeforeMutation(callbacks, {
+            session,
+            action: 'stranded_terminalize',
+            reason: 'dispatch_stranded',
+            now: Date.now(),
+          })
+          if (!decision.permitted) {
+            recordMutationRefusal(result, session, decision)
+            continue
+          }
+
           const marked = await updateSessionStatus(rowSessionId, 'stopped', {
             stoppedReason,
           })
@@ -698,6 +806,7 @@ export async function cleanupOrphanedSessions(
       orphaned: result.orphaned,
       requeued: result.requeued,
       failed: result.failed,
+      refused: result.refused,
       terminalMarked: result.terminalMarked,
       worktreePathsToCleanup: result.worktreePathsToCleanup.length,
     })

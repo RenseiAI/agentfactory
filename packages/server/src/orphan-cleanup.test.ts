@@ -55,9 +55,13 @@ import {
   updateSessionStatus,
   type AgentSessionState,
 } from './session-storage.js'
-import { dispatchWork } from './issue-lock.js'
-import { getClaimOwner, isSessionInQueue } from './work-queue.js'
-import { isSessionParkedForIssue } from './issue-lock.js'
+import {
+  dispatchWork,
+  isSessionParkedForIssue,
+  releaseIssueLock,
+} from './issue-lock.js'
+import { getClaimOwner, isSessionInQueue, releaseClaim } from './work-queue.js'
+import { listWorkers } from './worker-storage.js'
 import { redisGet } from './redis.js'
 import { heartbeatRedisKey } from './session-heartbeat.js'
 
@@ -66,6 +70,9 @@ const mockGetSessionState = vi.mocked(getSessionState)
 const mockResetSessionForRequeue = vi.mocked(resetSessionForRequeue)
 const mockUpdateSessionStatus = vi.mocked(updateSessionStatus)
 const mockDispatchWork = vi.mocked(dispatchWork)
+const mockReleaseIssueLock = vi.mocked(releaseIssueLock)
+const mockReleaseClaim = vi.mocked(releaseClaim)
+const mockListWorkers = vi.mocked(listWorkers)
 const mockGetClaimOwner = vi.mocked(getClaimOwner)
 const mockIsSessionInQueue = vi.mocked(isSessionInQueue)
 const mockIsSessionParkedForIssue = vi.mocked(isSessionParkedForIssue)
@@ -371,5 +378,101 @@ describe('cleanupOrphanedSessions — stranded per-dispatch rows', () => {
     expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
     expect(result.requeued).toBe(1)
     expect(result.terminalMarked).toBe(0)
+  })
+
+  it.each([
+    {
+      name: 'orphan requeue',
+      session: makeSession({ status: 'running', workerId: 'worker-gone' }),
+      action: 'orphan_requeue',
+      reason: 'worker_unreachable',
+    },
+    {
+      name: 'zombie redispatch',
+      session: makeSession({ status: 'pending' }),
+      action: 'zombie_redispatch',
+      reason: 'pending_unqueued',
+    },
+    {
+      name: 'stranded terminalization',
+      session: makeAliasRow({ status: 'pending' }),
+      action: 'stranded_terminalize',
+      reason: 'dispatch_stranded',
+    },
+  ] as const)(
+    'fails closed before every mutation for $name',
+    async ({ session, action, reason }) => {
+      mockGetAllSessions.mockResolvedValue([session])
+      mockListWorkers.mockResolvedValue([])
+      const beforeMutation = vi.fn(async () => ({
+        permitted: false as const,
+        code: 'restart_fence_held',
+        detail: 'planned daemon restart',
+      }))
+
+      const result = await cleanupOrphanedSessions({ beforeMutation })
+
+      expect(beforeMutation).toHaveBeenCalledTimes(1)
+      expect(beforeMutation).toHaveBeenCalledWith({
+        session,
+        action,
+        reason,
+        now: expect.any(Number),
+      })
+      expect(mockReleaseClaim).not.toHaveBeenCalled()
+      expect(mockReleaseIssueLock).not.toHaveBeenCalled()
+      expect(mockResetSessionForRequeue).not.toHaveBeenCalled()
+      expect(mockDispatchWork).not.toHaveBeenCalled()
+      expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
+      expect(result.refused).toBe(1)
+      expect(result.details).toContainEqual(
+        expect.objectContaining({
+          action: 'refused',
+          refusalCode: 'restart_fence_held',
+          reason: 'planned daemon restart',
+        })
+      )
+    }
+  )
+
+  it('turns a thrown pre-mutation predicate into a typed fail-closed refusal', async () => {
+    const session = makeSession({ status: 'running', workerId: 'worker-gone' })
+    mockGetAllSessions.mockResolvedValue([session])
+    mockListWorkers.mockResolvedValue([])
+
+    const result = await cleanupOrphanedSessions({
+      beforeMutation: vi.fn(async () => {
+        throw new Error('policy store unavailable')
+      }),
+    })
+
+    expect(result.refused).toBe(1)
+    expect(result.details).toContainEqual(
+      expect.objectContaining({
+        action: 'refused',
+        refusalCode: 'pre_mutation_predicate_failed',
+        reason: 'policy store unavailable',
+      })
+    )
+    expect(mockReleaseClaim).not.toHaveBeenCalled()
+    expect(mockReleaseIssueLock).not.toHaveBeenCalled()
+    expect(mockResetSessionForRequeue).not.toHaveBeenCalled()
+    expect(mockDispatchWork).not.toHaveBeenCalled()
+  })
+
+  it('invokes an allowing predicate exactly once before an orphan requeue', async () => {
+    const session = makeSession({ status: 'running', workerId: 'worker-gone' })
+    mockGetAllSessions.mockResolvedValue([session])
+    mockListWorkers.mockResolvedValue([])
+    const beforeMutation = vi.fn(async () => ({ permitted: true as const }))
+
+    const result = await cleanupOrphanedSessions({ beforeMutation })
+
+    expect(beforeMutation).toHaveBeenCalledTimes(1)
+    expect(mockReleaseClaim).toHaveBeenCalledWith('tracker-1')
+    expect(mockResetSessionForRequeue).toHaveBeenCalledWith('tracker-1')
+    expect(mockDispatchWork).toHaveBeenCalledTimes(1)
+    expect(result.requeued).toBe(1)
+    expect(result.refused).toBe(0)
   })
 })
