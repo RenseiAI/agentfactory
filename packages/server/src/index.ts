@@ -39,6 +39,7 @@ export * from './agent-inbox.js'
 
 // Orphan cleanup
 export * from './orphan-cleanup.js'
+export * from './cleanup-mutation-policy.js'
 
 // Worker authentication
 export * from './worker-auth.js'
