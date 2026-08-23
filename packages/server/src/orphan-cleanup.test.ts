@@ -475,4 +475,179 @@ describe('cleanupOrphanedSessions — stranded per-dispatch rows', () => {
     expect(result.requeued).toBe(1)
     expect(result.refused).toBe(0)
   })
+
+  it.each([
+    {
+      name: 'orphan requeue',
+      session: makeSession({ status: 'running', workerId: 'worker-gone' }),
+      action: 'orphan_requeue',
+      reason: 'worker_unreachable',
+      assertMutated: () => {
+        expect(mockReleaseClaim).toHaveBeenCalledWith('tracker-1')
+        expect(mockResetSessionForRequeue).toHaveBeenCalledWith('tracker-1')
+        expect(mockDispatchWork).toHaveBeenCalledOnce()
+      },
+    },
+    {
+      name: 'zombie redispatch',
+      session: makeSession({ status: 'pending' }),
+      action: 'zombie_redispatch',
+      reason: 'pending_unqueued',
+      assertMutated: () => {
+        expect(mockDispatchWork).toHaveBeenCalledOnce()
+      },
+    },
+    {
+      name: 'stranded terminalization',
+      session: makeAliasRow({ status: 'pending' }),
+      action: 'stranded_terminalize',
+      reason: 'dispatch_stranded',
+      assertMutated: () => {
+        expect(mockUpdateSessionStatus).toHaveBeenCalledWith(
+          'dispatch-uuid-1',
+          'stopped',
+          expect.any(Object)
+        )
+      },
+    },
+  ] as const)(
+    'runs the complete $name mutation only inside one executor call',
+    async ({ session, action, reason, assertMutated }) => {
+      mockGetAllSessions.mockResolvedValue([session])
+      mockListWorkers.mockResolvedValue([])
+      const beforeMutation = vi.fn(async () => ({
+        permitted: false as const,
+        code: 'must_not_run',
+      }))
+      const executeMutation = vi.fn(async (input, mutate) => {
+        expect(input).toEqual({
+          session,
+          action,
+          reason,
+          now: expect.any(Number),
+        })
+        expect(mockReleaseClaim).not.toHaveBeenCalled()
+        expect(mockReleaseIssueLock).not.toHaveBeenCalled()
+        expect(mockResetSessionForRequeue).not.toHaveBeenCalled()
+        expect(mockDispatchWork).not.toHaveBeenCalled()
+        expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
+        const value = await mutate()
+        assertMutated()
+        return {
+          permitted: true as const,
+          idempotentReplay: false as const,
+          value,
+        }
+      })
+
+      const result = await cleanupOrphanedSessions({
+        executeMutation,
+        beforeMutation,
+      })
+
+      expect(executeMutation).toHaveBeenCalledOnce()
+      expect(beforeMutation).not.toHaveBeenCalled()
+      expect(result.refused).toBe(0)
+    }
+  )
+
+  it.each([
+    makeSession({ status: 'running', workerId: 'worker-gone' }),
+    makeSession({ status: 'pending' }),
+    makeAliasRow({ status: 'pending' }),
+  ])('keeps every direct cleanup write at zero when the executor refuses', async (session) => {
+    mockGetAllSessions.mockResolvedValue([session])
+    mockListWorkers.mockResolvedValue([])
+    const executeMutation = vi.fn(async () => ({
+      permitted: false as const,
+      code: 'restart_fence_held',
+    }))
+
+    const result = await cleanupOrphanedSessions({ executeMutation })
+
+    expect(executeMutation).toHaveBeenCalledOnce()
+    expect(mockReleaseClaim).not.toHaveBeenCalled()
+    expect(mockReleaseIssueLock).not.toHaveBeenCalled()
+    expect(mockResetSessionForRequeue).not.toHaveBeenCalled()
+    expect(mockDispatchWork).not.toHaveBeenCalled()
+    expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
+    expect(result.refused).toBe(1)
+  })
+
+  it.each(
+    [
+      makeSession({ status: 'running', workerId: 'worker-gone' }),
+      makeSession({ status: 'pending' }),
+      makeAliasRow({ status: 'pending' }),
+    ].flatMap((session) => [
+      {
+        session,
+        failure: 'throws',
+        executeMutation: async () => {
+          throw new Error('authority unavailable')
+        },
+      },
+      {
+        session,
+        failure: 'returns malformed output',
+        executeMutation: async () => ({ permitted: true }),
+      },
+    ])
+  )('keeps direct cleanup writes at zero when the executor $failure', async ({
+    session,
+    executeMutation,
+  }) => {
+    mockGetAllSessions.mockResolvedValue([session])
+    mockListWorkers.mockResolvedValue([])
+
+    const result = await cleanupOrphanedSessions({
+      executeMutation: executeMutation as never,
+    })
+
+    expect(mockReleaseClaim).not.toHaveBeenCalled()
+    expect(mockReleaseIssueLock).not.toHaveBeenCalled()
+    expect(mockResetSessionForRequeue).not.toHaveBeenCalled()
+    expect(mockDispatchWork).not.toHaveBeenCalled()
+    expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
+    expect(result.refused).toBe(1)
+    expect(result.details).toContainEqual(
+      expect.objectContaining({ refusalCode: 'mutation_executor_failed' })
+    )
+  })
+
+  it.each([
+    makeSession({ status: 'running', workerId: 'worker-gone' }),
+    makeSession({ status: 'pending' }),
+    makeAliasRow({ status: 'pending' }),
+  ])('treats a completed executor replay as already applied', async (session) => {
+    mockGetAllSessions.mockResolvedValue([session])
+    mockListWorkers.mockResolvedValue([])
+    const onOrphanRequeued = vi.fn()
+    const onZombieRecovered = vi.fn()
+    const executeMutation = vi.fn(async () => ({
+      permitted: true as const,
+      idempotentReplay: true as const,
+    }))
+
+    const result = await cleanupOrphanedSessions({
+      executeMutation,
+      onOrphanRequeued,
+      onZombieRecovered,
+    })
+
+    expect(executeMutation).toHaveBeenCalledOnce()
+    expect(mockReleaseClaim).not.toHaveBeenCalled()
+    expect(mockReleaseIssueLock).not.toHaveBeenCalled()
+    expect(mockResetSessionForRequeue).not.toHaveBeenCalled()
+    expect(mockDispatchWork).not.toHaveBeenCalled()
+    expect(mockUpdateSessionStatus).not.toHaveBeenCalled()
+    expect(onOrphanRequeued).not.toHaveBeenCalled()
+    expect(onZombieRecovered).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      requeued: 0,
+      failed: 0,
+      refused: 0,
+      terminalMarked: 0,
+    })
+  })
 })

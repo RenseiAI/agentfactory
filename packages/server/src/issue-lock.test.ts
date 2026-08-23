@@ -54,7 +54,7 @@ import {
   redisGet,
 } from './redis.js'
 import { getSessionState } from './session-storage.js'
-import type { QueuedWork } from './work-queue.js'
+import { queueWork, type QueuedWork } from './work-queue.js'
 
 const mockIsRedisConfigured = vi.mocked(isRedisConfigured)
 const mockRedisSetNX = vi.mocked(redisSetNX)
@@ -70,6 +70,7 @@ const mockRedisHDel = vi.mocked(redisHDel)
 const mockRedisKeys = vi.mocked(redisKeys)
 const mockRedisGet = vi.mocked(redisGet)
 const mockGetSessionState = vi.mocked(getSessionState)
+const mockQueueWork = vi.mocked(queueWork)
 
 function makeWork(overrides: Partial<QueuedWork> = {}): QueuedWork {
   return {
@@ -241,7 +242,7 @@ describe('cleanupStaleLocksWithIdleWorkers — pending startup grace', () => {
     )
   })
 
-  it('releases a permitted holder but leaves a refused pending candidate untouched', async () => {
+  it('runs stale lock release and pending promotion inside one holder-scoped executor', async () => {
     const pendingWork = makeWork({
       sessionId: 'parked-session',
       issueId: ISSUE_ID,
@@ -252,51 +253,127 @@ describe('cleanupStaleLocksWithIdleWorkers — pending startup grace', () => {
       rowSessionId: 'cloud-session-1',
       status: 'completed',
     }
-    const pendingSession = {
-      trackerSessionId: 'parked-session',
-      rowSessionId: 'parked-session',
-      status: 'pending',
-    }
     mockRedisGet.mockResolvedValue(makeLock() as never)
-    mockGetSessionState.mockImplementation(async (sessionId: string) =>
-      (sessionId === 'cloud-session-1'
-        ? holderSession
-        : pendingSession) as never
-    )
+    mockGetSessionState.mockResolvedValue(holderSession as never)
     mockRedisZRangeByScore.mockResolvedValue(['qa'])
     mockRedisZPopMin.mockResolvedValue({ member: 'qa', score: 2 })
     mockRedisHGet.mockResolvedValue(JSON.stringify(pendingWork))
-    const beforeMutation = vi.fn(async ({ session }) =>
-      session.trackerSessionId === 'cloud-session-1'
-        ? { permitted: true as const }
-        : {
-            permitted: false as const,
-            code: 'restart_fence_held',
-          }
+    mockRedisSetNX.mockResolvedValue(true)
+    mockQueueWork.mockResolvedValue(true)
+    const beforeMutation = vi.fn()
+    const executeMutation = vi.fn(async (input, mutate) => {
+      expect(input).toEqual({
+        session: holderSession,
+        action: 'stale_lock_release',
+        reason: 'stale_issue_lock',
+        now: expect.any(Number),
+      })
+      expect(mockRedisDel).not.toHaveBeenCalled()
+      expect(mockRedisZPopMin).not.toHaveBeenCalled()
+      expect(mockRedisSetNX).not.toHaveBeenCalled()
+      expect(mockQueueWork).not.toHaveBeenCalled()
+      const value = await mutate()
+      expect(mockRedisDel).toHaveBeenCalledWith(LOCK_KEY)
+      expect(mockRedisZPopMin).toHaveBeenCalledWith(
+        'issue:pending:issue-cloud'
+      )
+      expect(mockRedisSetNX).toHaveBeenCalled()
+      expect(mockQueueWork).toHaveBeenCalledWith(pendingWork)
+      return {
+        permitted: true as const,
+        idempotentReplay: false as const,
+        value,
+      }
+    })
+
+    const promoted = await cleanupStaleLocksWithIdleWorkers(true, {
+      executeMutation,
+      beforeMutation,
+    })
+
+    expect(executeMutation).toHaveBeenCalledOnce()
+    expect(beforeMutation).not.toHaveBeenCalled()
+    expect(promoted).toBe(1)
+  })
+
+  it('leaves the stale lock and pending queue untouched on executor refusal', async () => {
+    mockRedisGet.mockResolvedValue(
+      makeLock({ lockedAt: Date.now() - (GRACE_MS + 60_000) }) as never
     )
+    stubSession('pending')
+    const executeMutation = vi.fn(async () => ({
+      permitted: false as const,
+      code: 'restart_fence_held',
+    }))
+
+    const promoted = await cleanupStaleLocksWithIdleWorkers(true, {
+      executeMutation,
+    })
+
+    expect(executeMutation).toHaveBeenCalledOnce()
+    expect(mockRedisDel).not.toHaveBeenCalled()
+    expect(mockRedisZPopMin).not.toHaveBeenCalled()
+    expect(mockRedisSetNX).not.toHaveBeenCalled()
+    expect(mockQueueWork).not.toHaveBeenCalled()
+    expect(promoted).toBe(0)
+  })
+
+  it.each([
+    {
+      failure: 'throws',
+      executeMutation: async () => {
+        throw new Error('authority unavailable')
+      },
+    },
+    {
+      failure: 'returns malformed output',
+      executeMutation: async () => ({ permitted: true }),
+    },
+  ])('keeps stale-lock writes at zero when the executor $failure', async ({
+    executeMutation,
+  }) => {
+    mockRedisGet.mockResolvedValue(
+      makeLock({ lockedAt: Date.now() - (GRACE_MS + 60_000) }) as never
+    )
+    stubSession('pending')
     const onRefused = vi.fn()
 
     const promoted = await cleanupStaleLocksWithIdleWorkers(true, {
-      beforeMutation,
+      executeMutation: executeMutation as never,
       onRefused,
     })
 
-    expect(beforeMutation).toHaveBeenCalledTimes(2)
-    expect(mockRedisDel).toHaveBeenCalledTimes(1)
-    expect(mockRedisDel).toHaveBeenCalledWith(LOCK_KEY)
-    expect(mockRedisCompareAndRemove).not.toHaveBeenCalled()
-    expect(mockRedisHDel).not.toHaveBeenCalled()
+    expect(mockRedisDel).not.toHaveBeenCalled()
+    expect(mockRedisZPopMin).not.toHaveBeenCalled()
     expect(mockRedisSetNX).not.toHaveBeenCalled()
+    expect(mockQueueWork).not.toHaveBeenCalled()
     expect(onRefused).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: 'parked-session',
-        action: 'expired_lock_promote',
-      }),
-      expect.objectContaining({
-        permitted: false,
-        code: 'restart_fence_held',
-      })
+      expect.objectContaining({ action: 'stale_lock_release' }),
+      expect.objectContaining({ code: 'mutation_executor_failed' })
     )
+    expect(promoted).toBe(0)
+  })
+
+  it('treats a completed stale-lock replay as already applied', async () => {
+    mockRedisGet.mockResolvedValue(
+      makeLock({ lockedAt: Date.now() - (GRACE_MS + 60_000) }) as never
+    )
+    stubSession('pending')
+    const onRefused = vi.fn()
+
+    const promoted = await cleanupStaleLocksWithIdleWorkers(true, {
+      executeMutation: async () => ({
+        permitted: true,
+        idempotentReplay: true,
+      }),
+      onRefused,
+    })
+
+    expect(mockRedisDel).not.toHaveBeenCalled()
+    expect(mockRedisZPopMin).not.toHaveBeenCalled()
+    expect(mockRedisSetNX).not.toHaveBeenCalled()
+    expect(mockQueueWork).not.toHaveBeenCalled()
+    expect(onRefused).not.toHaveBeenCalled()
     expect(promoted).toBe(0)
   })
 
@@ -359,6 +436,121 @@ describe('cleanupExpiredLocksWithPendingWork — pre-mutation policy', () => {
       expect.any(String)
     )
     expect(promoted).toBe(1)
+  })
+
+  it('wraps the full expired-lock promotion in one executor call', async () => {
+    const beforeMutation = vi.fn()
+    const executeMutation = vi.fn(async (input, mutate) => {
+      expect(input).toMatchObject({
+        action: 'expired_lock_promote',
+        reason: 'expired_issue_lock',
+        session: expect.objectContaining({ trackerSessionId: 'session-1' }),
+      })
+      expect(mockRedisCompareAndRemove).not.toHaveBeenCalled()
+      expect(mockRedisSetNX).not.toHaveBeenCalled()
+      expect(mockQueueWork).not.toHaveBeenCalled()
+      const value = await mutate()
+      expect(mockRedisCompareAndRemove).toHaveBeenCalled()
+      expect(mockRedisSetNX).toHaveBeenCalled()
+      expect(mockQueueWork).toHaveBeenCalled()
+      return {
+        permitted: true as const,
+        idempotentReplay: false as const,
+        value,
+      }
+    })
+
+    const promoted = await cleanupExpiredLocksWithPendingWork({
+      executeMutation,
+      beforeMutation,
+    })
+
+    expect(executeMutation).toHaveBeenCalledOnce()
+    expect(beforeMutation).not.toHaveBeenCalled()
+    expect(promoted).toBe(1)
+  })
+
+  it('leaves expired pending work untouched on executor refusal', async () => {
+    const executeMutation = vi.fn(async () => ({
+      permitted: false as const,
+      code: 'restart_fence_held',
+    }))
+
+    const promoted = await cleanupExpiredLocksWithPendingWork({
+      executeMutation,
+    })
+
+    expect(executeMutation).toHaveBeenCalledOnce()
+    expect(mockRedisCompareAndRemove).not.toHaveBeenCalled()
+    expect(mockRedisHDel).not.toHaveBeenCalled()
+    expect(mockRedisSetNX).not.toHaveBeenCalled()
+    expect(mockQueueWork).not.toHaveBeenCalled()
+    expect(promoted).toBe(0)
+  })
+
+  it.each([
+    {
+      failure: 'throws',
+      executeMutation: async () => {
+        throw new Error('authority unavailable')
+      },
+    },
+    {
+      failure: 'returns malformed output',
+      executeMutation: async () => ({ permitted: true }),
+    },
+  ])('keeps expired-promotion writes at zero when the executor $failure', async ({
+    executeMutation,
+  }) => {
+    const onRefused = vi.fn()
+
+    const promoted = await cleanupExpiredLocksWithPendingWork({
+      executeMutation: executeMutation as never,
+      onRefused,
+    })
+
+    expect(mockRedisCompareAndRemove).not.toHaveBeenCalled()
+    expect(mockRedisHDel).not.toHaveBeenCalled()
+    expect(mockRedisSetNX).not.toHaveBeenCalled()
+    expect(mockQueueWork).not.toHaveBeenCalled()
+    expect(onRefused).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'expired_lock_promote' }),
+      expect.objectContaining({ code: 'mutation_executor_failed' })
+    )
+    expect(promoted).toBe(0)
+  })
+
+  it('treats a completed expired-promotion replay as already applied', async () => {
+    const onRefused = vi.fn()
+    const promoted = await cleanupExpiredLocksWithPendingWork({
+      executeMutation: async () => ({
+        permitted: true,
+        idempotentReplay: true,
+      }),
+      onRefused,
+    })
+
+    expect(mockRedisCompareAndRemove).not.toHaveBeenCalled()
+    expect(mockRedisHDel).not.toHaveBeenCalled()
+    expect(mockRedisSetNX).not.toHaveBeenCalled()
+    expect(mockQueueWork).not.toHaveBeenCalled()
+    expect(onRefused).not.toHaveBeenCalled()
+    expect(promoted).toBe(0)
+  })
+
+  it('propagates a partial expired-promotion throw for composing reconciliation', async () => {
+    mockQueueWork.mockRejectedValueOnce(new Error('queue unavailable after pending removal'))
+
+    await expect(
+      cleanupExpiredLocksWithPendingWork({
+        executeMutation: async (_input, mutate) => ({
+          permitted: true,
+          idempotentReplay: false,
+          value: await mutate(),
+        }),
+      })
+    ).rejects.toMatchObject({ name: 'CleanupMutationExecutionError' })
+    expect(mockRedisCompareAndRemove).toHaveBeenCalledOnce()
   })
 
   it('leaves the selected pending work untouched on an empty refusal', async () => {
