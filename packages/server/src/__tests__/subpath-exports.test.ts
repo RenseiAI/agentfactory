@@ -29,6 +29,12 @@ describe('@donmai/server subpath exports', { timeout: 30_000 }, () => {
     expect(typeof mod.getRedisClient).toBe('function')
   })
 
+  it('exports executeCleanupMutation from main', async () => {
+    const mod = await import('../index.js')
+    expect(mod.executeCleanupMutation).toBeDefined()
+    expect(typeof mod.executeCleanupMutation).toBe('function')
+  })
+
   // Rate limiting
   it('exports RateLimiter from main', async () => {
     const mod = await import('../index.js')

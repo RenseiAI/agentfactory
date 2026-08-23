@@ -4,6 +4,13 @@
 
 ### Fixes
 
+- **Cleanup mutation executor (target v0.9.13)** — `@donmai/server` cleanup
+  callbacks can now wrap each complete orphan, zombie, stranded-session, and
+  issue-lock mutation sequence in one awaited generic executor. Existing
+  `beforeMutation` integrations remain supported as a fallback, while executor
+  refusal or pre-entry failure leaves storage untouched and post-entry failure
+  propagates for durable reconciliation.
+
 - **Stranded per-dispatch session rows** — Orphan cleanup now terminal-marks per-dispatch Redis session rows (rows written under their own key whose stored `trackerSessionId` was patched to a shared tracker session) under their OWN key once the tracker-keyed session is terminal or missing. Previously every lifecycle write keyed off `trackerSessionId`, so such rows stranded as phantom queued/parked sessions forever and the zombie sweep re-queued the shared tracker session on every cleanup pass (infinite re-queue → pop → drop churn). Session reads now expose the row's own id as `rowSessionId`, and the public sessions API hashes it for the public session id so N rows aliasing one tracker session no longer render as N duplicates of the same id.
 
 ### Deprecations

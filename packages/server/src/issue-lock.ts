@@ -35,11 +35,14 @@ import { queueWork, type QueuedWork } from './work-queue.js'
 import { getSessionState, type AgentSessionState } from './session-storage.js'
 import type { AgentWorkType } from './types.js'
 import {
-  evaluateCleanupMutationPolicy,
+  CleanupMutationExecutionError,
+  executeCleanupMutation,
   type BeforeCleanupMutation,
   type CleanupMutationAction,
   type CleanupMutationDecision,
+  type CleanupMutationExecutionResult,
   type CleanupMutationReason,
+  type ExecuteCleanupMutation,
 } from './cleanup-mutation-policy.js'
 
 const log = {
@@ -97,6 +100,7 @@ export interface IssueLockCleanupCandidate {
 
 /** Optional composing policy for issue-lock maintenance mutations. */
 export interface IssueLockCleanupCallbacks {
+  executeMutation?: ExecuteCleanupMutation
   beforeMutation?: BeforeCleanupMutation
   onRefused?: (
     candidate: IssueLockCleanupCandidate,
@@ -104,18 +108,30 @@ export interface IssueLockCleanupCallbacks {
   ) => void
 }
 
-async function issueLockCleanupPermitted(
+async function executeIssueLockCleanupMutation<T>(
   callbacks: IssueLockCleanupCallbacks | undefined,
-  candidate: IssueLockCleanupCandidate
-): Promise<boolean> {
-  if (!callbacks?.beforeMutation) return true
+  candidate: IssueLockCleanupCandidate,
+  mutate: () => Promise<T>
+): Promise<CleanupMutationExecutionResult<T>> {
+  if (!callbacks?.executeMutation && !callbacks?.beforeMutation) {
+    return {
+      permitted: true,
+      idempotentReplay: false,
+      value: await mutate(),
+    }
+  }
 
-  const decision = candidate.session
-    ? await evaluateCleanupMutationPolicy(callbacks.beforeMutation, {
-        session: candidate.session,
-        action: candidate.action,
-        reason: candidate.reason,
-        now: Date.now(),
+  const result = candidate.session
+    ? await executeCleanupMutation({
+        executeMutation: callbacks.executeMutation,
+        beforeMutation: callbacks.beforeMutation,
+        mutate,
+        input: {
+          session: candidate.session,
+          action: candidate.action,
+          reason: candidate.reason,
+          now: Date.now(),
+        },
       })
     : {
         permitted: false as const,
@@ -123,10 +139,10 @@ async function issueLockCleanupPermitted(
         detail: 'candidate session state is unavailable',
       }
 
-  if (decision.permitted) return true
+  if (result.permitted) return result
 
   try {
-    callbacks.onRefused?.(candidate, decision)
+    callbacks.onRefused?.(candidate, result)
   } catch (err) {
     log.warn('Issue-lock cleanup refusal callback failed', {
       sessionId: candidate.sessionId,
@@ -134,7 +150,7 @@ async function issueLockCleanupPermitted(
       error: err instanceof Error ? err.message : String(err),
     })
   }
-  return false
+  return result
 }
 
 /**
@@ -307,8 +323,11 @@ export async function promoteNextPendingWork(
     const pendingKey = `${PENDING_PREFIX}${issueId}`
     const itemsKey = `${PENDING_ITEMS_PREFIX}${issueId}`
 
+    const hasCleanupPolicy = Boolean(
+      cleanupCallbacks?.executeMutation || cleanupCallbacks?.beforeMutation
+    )
     let dedupMember: string
-    if (cleanupCallbacks?.beforeMutation) {
+    if (hasCleanupPolicy) {
       // Inspect without mutating so policy can run before the exact candidate's
       // first write. Removal below compares the hash bytes atomically, avoiding
       // authorization of one same-workType item followed by removal of another.
@@ -343,74 +362,91 @@ export async function promoteNextPendingWork(
 
     const work = JSON.parse(workJson) as QueuedWork
 
-    if (cleanupCallbacks?.beforeMutation) {
-      const session = await getSessionState(work.sessionId)
-      const permitted = await issueLockCleanupPermitted(cleanupCallbacks, {
+    const mutatePromotion = async (): Promise<QueuedWork | null> => {
+      if (hasCleanupPolicy) {
+        const removed = await redisCompareAndRemoveSortedHashMember(
+          pendingKey,
+          itemsKey,
+          dedupMember,
+          workJson
+        )
+        if (!removed) {
+          log.debug('Pending work changed before authorized promotion', {
+            issueId,
+            dedupMember,
+          })
+          return null
+        }
+      } else {
+        // The standalone path already popped from the sorted set above.
+        await redisHDel(itemsKey, dedupMember)
+      }
+
+      // Acquire the issue lock for this promoted work
+      const lock: IssueLock = {
+        sessionId: work.sessionId,
+        workType: work.workType || 'development',
+        workerId: null,
+        lockedAt: Date.now(),
+        issueIdentifier: work.issueIdentifier,
+      }
+
+      const acquired = await acquireIssueLock(issueId, lock)
+      if (!acquired) {
+        log.warn(
+          'Failed to acquire lock for promoted work -- another lock appeared',
+          {
+            issueId,
+            sessionId: work.sessionId,
+          }
+        )
+        // Re-park the work since we couldn't acquire the lock
+        await parkWorkForIssue(issueId, work)
+        return null
+      }
+
+      // Queue in the global work queue
+      const queued = await queueWork(work)
+      if (!queued) {
+        log.error('Failed to queue promoted work', {
+          issueId,
+          sessionId: work.sessionId,
+        })
+        // Release the lock since we couldn't queue
+        await releaseIssueLock(issueId)
+        return null
+      }
+
+      log.info('Pending work promoted', {
+        issueId,
+        sessionId: work.sessionId,
+        workType: work.workType,
+        issueIdentifier: work.issueIdentifier,
+      })
+
+      return work
+    }
+
+    if (!hasCleanupPolicy) return mutatePromotion()
+
+    const session = await getSessionState(work.sessionId)
+    const execution = await executeIssueLockCleanupMutation(
+      cleanupCallbacks,
+      {
         session: session ?? undefined,
         sessionId: work.sessionId,
         issueId,
         issueIdentifier: work.issueIdentifier,
         action: 'expired_lock_promote',
         reason: 'expired_issue_lock',
-      })
-      if (!permitted) return null
-
-      const removed = await redisCompareAndRemoveSortedHashMember(
-        pendingKey,
-        itemsKey,
-        dedupMember,
-        workJson
-      )
-      if (!removed) {
-        log.debug('Pending work changed before authorized promotion', {
-          issueId,
-          dedupMember,
-        })
-        return null
-      }
-    } else {
-      // The standalone path already popped from the sorted set above.
-      await redisHDel(itemsKey, dedupMember)
-    }
-
-    // Acquire the issue lock for this promoted work
-    const lock: IssueLock = {
-      sessionId: work.sessionId,
-      workType: work.workType || 'development',
-      workerId: null,
-      lockedAt: Date.now(),
-      issueIdentifier: work.issueIdentifier,
-    }
-
-    const acquired = await acquireIssueLock(issueId, lock)
-    if (!acquired) {
-      log.warn('Failed to acquire lock for promoted work -- another lock appeared', {
-        issueId,
-        sessionId: work.sessionId,
-      })
-      // Re-park the work since we couldn't acquire the lock
-      await parkWorkForIssue(issueId, work)
-      return null
-    }
-
-    // Queue in the global work queue
-    const queued = await queueWork(work)
-    if (!queued) {
-      log.error('Failed to queue promoted work', { issueId, sessionId: work.sessionId })
-      // Release the lock since we couldn't queue
-      await releaseIssueLock(issueId)
-      return null
-    }
-
-    log.info('Pending work promoted', {
-      issueId,
-      sessionId: work.sessionId,
-      workType: work.workType,
-      issueIdentifier: work.issueIdentifier,
-    })
-
-    return work
+      },
+      mutatePromotion
+    )
+    return execution.permitted && !execution.idempotentReplay
+      ? execution.value
+      : null
   } catch (error) {
+    if (error instanceof CleanupMutationExecutionError) throw error
     log.error('Failed to promote pending work', { error, issueId })
     return null
   }
@@ -667,6 +703,7 @@ export async function cleanupExpiredLocksWithPendingWork(
       log.info('Promoted pending work from expired locks', { promoted })
     }
   } catch (error) {
+    if (error instanceof CleanupMutationExecutionError) throw error
     log.error('Failed to cleanup expired locks', { error })
   }
 
@@ -781,30 +818,8 @@ export async function cleanupStaleLocksWithIdleWorkers(
 
       // Check if the lock holder's session is in a terminal state
       const session = await getSessionState(lock.sessionId)
-      if (!session) {
-        const permitted = await issueLockCleanupPermitted(cleanupCallbacks, {
-          sessionId: lock.sessionId,
-          issueId,
-          issueIdentifier: lock.issueIdentifier,
-          action: 'stale_lock_release',
-          reason: 'stale_issue_lock',
-        })
-        if (!permitted) continue
-
-        // Session expired from Redis (24h TTL) but lock remains (2h TTL)
-        // Safe to release -- the session is long gone
-        log.info('Releasing lock for expired session', {
-          issueId,
-          sessionId: lock.sessionId,
-          issueIdentifier: lock.issueIdentifier,
-        })
-        await releaseIssueLock(issueId)
-        const work = await promoteNextPendingWork(issueId, cleanupCallbacks)
-        if (work) promoted++
-        continue
-      }
-
-      if (STALE_LOCK_STATUSES.has(session.status)) {
+      if (session && !STALE_LOCK_STATUSES.has(session.status)) continue
+      if (session) {
         // A `pending` holder in its normal startup window still needs its lock:
         // a cloud runner is still provisioning + booting before it flips the
         // session to `running` and claims. Only reap a `pending` lock once it is
@@ -829,35 +844,47 @@ export async function cleanupStaleLocksWithIdleWorkers(
           )
           continue
         }
+      }
 
-        const permitted = await issueLockCleanupPermitted(cleanupCallbacks, {
-          session,
+      const execution = await executeIssueLockCleanupMutation(
+        cleanupCallbacks,
+        {
+          session: session ?? undefined,
           sessionId: lock.sessionId,
           issueId,
           issueIdentifier: lock.issueIdentifier,
           action: 'stale_lock_release',
           reason: 'stale_issue_lock',
-        })
-        if (!permitted) continue
+        },
+        async () => {
+          log.info(
+            session
+              ? 'Releasing stale lock (session no longer needs lock)'
+              : 'Releasing lock for expired session',
+            {
+              issueId,
+              sessionId: lock.sessionId,
+              ...(session ? { sessionStatus: session.status } : {}),
+              issueIdentifier: lock.issueIdentifier,
+              lockAge: Math.round((Date.now() - lock.lockedAt) / 1000),
+            }
+          )
 
-        log.info('Releasing stale lock (session no longer needs lock)', {
-          issueId,
-          sessionId: lock.sessionId,
-          sessionStatus: session.status,
-          issueIdentifier: lock.issueIdentifier,
-          lockAge: Math.round((Date.now() - lock.lockedAt) / 1000),
-        })
-
-        await releaseIssueLock(issueId)
-        const work = await promoteNextPendingWork(issueId, cleanupCallbacks)
-        if (work) {
-          promoted++
-          log.info('Promoted parked work after stale lock cleanup', {
-            issueId,
-            promotedSessionId: work.sessionId,
-            promotedWorkType: work.workType,
-          })
+          await releaseIssueLock(issueId)
+          // The promotion is one effect of stale_lock_release, not a nested
+          // expired_lock_promote decision. The outer executor owns both writes.
+          return promoteNextPendingWork(issueId)
         }
+      )
+      if (!execution.permitted || execution.idempotentReplay) continue
+      const work = execution.value
+      if (work) {
+        promoted++
+        log.info('Promoted parked work after stale lock cleanup', {
+          issueId,
+          promotedSessionId: work.sessionId,
+          promotedWorkType: work.workType,
+        })
       }
     }
 
@@ -865,6 +892,7 @@ export async function cleanupStaleLocksWithIdleWorkers(
       log.info('Promoted parked work from stale locks', { promoted })
     }
   } catch (error) {
+    if (error instanceof CleanupMutationExecutionError) throw error
     log.error('Failed to cleanup stale locks', { error })
   }
 

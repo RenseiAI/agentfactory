@@ -160,4 +160,38 @@ describe('orphan cleanup policy across real issue-lock maintenance', () => {
       })
     )
   })
+
+  it('deduplicates one executor refusal across zombie and stale-lock paths', async () => {
+    const executeMutation = vi.fn(async () => ({
+      permitted: false as const,
+      code: 'restart_fence_held',
+      detail: 'planned restart',
+    }))
+
+    const result = await cleanupOrphanedSessions({ executeMutation })
+
+    expect(executeMutation).toHaveBeenCalledTimes(1)
+    expect(executeMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session,
+        action: 'zombie_redispatch',
+        reason: 'pending_unqueued',
+      }),
+      expect.any(Function)
+    )
+    expect(redisDel).not.toHaveBeenCalled()
+    expect(redisCompareAndRemoveSortedHashMember).not.toHaveBeenCalled()
+    expect(queueWork).not.toHaveBeenCalled()
+    expect(releaseClaim).not.toHaveBeenCalled()
+    expect(resetSessionForRequeue).not.toHaveBeenCalled()
+    expect(updateSessionStatus).not.toHaveBeenCalled()
+    expect(result.refused).toBe(1)
+    expect(result.details).toContainEqual(
+      expect.objectContaining({
+        sessionId: 'zombie-session',
+        action: 'refused',
+        refusalCode: 'restart_fence_held',
+      })
+    )
+  })
 })

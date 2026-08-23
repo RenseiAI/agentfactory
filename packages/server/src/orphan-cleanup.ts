@@ -35,11 +35,14 @@ import {
 import { heartbeatRedisKey } from './session-heartbeat.js'
 import { redisGet } from './redis.js'
 import {
-  evaluateCleanupMutationPolicy,
+  CleanupMutationExecutionError,
+  executeCleanupMutation,
   type CleanupMutationAction,
   type CleanupMutationDecision,
+  type CleanupMutationExecutionResult,
   type CleanupMutationInput,
   type CleanupMutationReason,
+  type ExecuteCleanupMutation,
 } from './cleanup-mutation-policy.js'
 
 const log = createLogger('orphan-cleanup')
@@ -207,10 +210,13 @@ function isPerDispatchAliasRow(session: AgentSessionState): boolean {
  */
 export interface OrphanCleanupCallbacks {
   /**
-   * Authoritative policy hook invoked exactly once before this cleanup pass
-   * performs the first mutation for a candidate. A refusal, thrown error, or
-   * rejected promise fails closed for that candidate and leaves its claim,
-   * lock, queue entry, and session state untouched.
+   * Preferred around-mutation seam. A fresh result invokes `mutate` exactly
+   * once after its durable gate; a completed replay returns without entry.
+   */
+  executeMutation?: ExecuteCleanupMutation
+  /**
+   * Backward-compatible preflight hook for existing standalone embedders.
+   * Ignored when executeMutation is present.
    */
   beforeMutation?: (
     input: OrphanCleanupMutationInput
@@ -225,6 +231,7 @@ export type OrphanCleanupMutationAction = CleanupMutationAction
 export type OrphanCleanupMutationReason = CleanupMutationReason
 export type OrphanCleanupMutationInput = CleanupMutationInput
 export type OrphanCleanupMutationDecision = CleanupMutationDecision
+export type ExecuteOrphanCleanupMutation = ExecuteCleanupMutation
 
 export interface OrphanCleanupResult {
   checked: number
@@ -246,13 +253,6 @@ export interface OrphanCleanupResult {
   }>
   /** Worktree paths that need cleanup on worker machines */
   worktreePathsToCleanup: string[]
-}
-
-async function evaluateBeforeMutation(
-  callbacks: OrphanCleanupCallbacks | undefined,
-  input: OrphanCleanupMutationInput
-): Promise<OrphanCleanupMutationDecision> {
-  return evaluateCleanupMutationPolicy(callbacks?.beforeMutation, input)
 }
 
 function recordMutationRefusal(
@@ -459,16 +459,22 @@ export async function cleanupOrphanedSessions(
   const sessionIdentity = (session: AgentSessionState): string =>
     session.rowSessionId || session.trackerSessionId
 
-  const beforeMutation = async (
-    input: OrphanCleanupMutationInput
-  ): Promise<OrphanCleanupMutationDecision> => {
+  const runMutation = async <T>(
+    input: OrphanCleanupMutationInput,
+    mutate: () => Promise<T>
+  ): Promise<CleanupMutationExecutionResult<T>> => {
     const identity = sessionIdentity(input.session)
     const priorRefusal = refusedBySessionId.get(identity)
     if (priorRefusal) return priorRefusal
 
-    const decision = await evaluateBeforeMutation(callbacks, input)
-    if (!decision.permitted) refusedBySessionId.set(identity, decision)
-    return decision
+    const result = await executeCleanupMutation({
+      input,
+      mutate,
+      executeMutation: callbacks?.executeMutation,
+      beforeMutation: callbacks?.beforeMutation,
+    })
+    if (!result.permitted) refusedBySessionId.set(identity, result)
+    return result
   }
 
   const recordRefusalOnce = (
@@ -481,9 +487,10 @@ export async function cleanupOrphanedSessions(
     recordMutationRefusal(result, session, decision)
   }
 
-  const issueLockCleanupCallbacks = callbacks?.beforeMutation
+  const issueLockCleanupCallbacks =
+    callbacks?.executeMutation || callbacks?.beforeMutation
     ? {
-        beforeMutation,
+        executeMutation: runMutation,
         onRefused: (
           candidate: import('./issue-lock.js').IssueLockCleanupCandidate,
           decision: Extract<
@@ -526,17 +533,6 @@ export async function cleanupOrphanedSessions(
       try {
         const issueIdentifier = session.issueIdentifier || session.issueId.slice(0, 8)
 
-        const decision = await beforeMutation({
-          session,
-          action: 'orphan_requeue',
-          reason: 'worker_unreachable',
-          now: Date.now(),
-        })
-        if (!decision.permitted) {
-          recordRefusalOnce(session, decision)
-          continue
-        }
-
         log.info('Re-queuing orphaned session', {
           sessionId: session.trackerSessionId,
           issueIdentifier,
@@ -544,43 +540,59 @@ export async function cleanupOrphanedSessions(
           previousStatus: session.status,
         })
 
-        // Release any existing claim
-        await releaseClaim(session.trackerSessionId)
+        const execution = await runMutation(
+          {
+            session,
+            action: 'orphan_requeue',
+            reason: 'worker_unreachable',
+            now: Date.now(),
+          },
+          async () => {
+            // Release any existing claim
+            await releaseClaim(session.trackerSessionId)
 
-        // Release the issue lock if held by this orphaned session.
-        // Without this, dispatchWork() below would fail to acquire the lock
-        // (SET NX) and park the work instead — leaving it stuck until the
-        // lock's 2-hour TTL expires, since the session is reset to 'pending'
-        // which the stale-lock cleanup doesn't consider terminal.
-        const existingLock = await getIssueLock(session.issueId)
-        if (existingLock && existingLock.sessionId === session.trackerSessionId) {
-          log.info('Releasing issue lock held by orphaned session', {
-            sessionId: session.trackerSessionId,
-            issueId: session.issueId,
-          })
-          await releaseIssueLock(session.issueId)
+            // Release the issue lock if held by this orphaned session.
+            // Without this, dispatchWork() below would fail to acquire the lock
+            // (SET NX) and park the work instead — leaving it stuck until the
+            // lock's 2-hour TTL expires, since the session is reset to 'pending'
+            // which the stale-lock cleanup doesn't consider terminal.
+            const existingLock = await getIssueLock(session.issueId)
+            if (
+              existingLock &&
+              existingLock.sessionId === session.trackerSessionId
+            ) {
+              log.info('Releasing issue lock held by orphaned session', {
+                sessionId: session.trackerSessionId,
+                issueId: session.issueId,
+              })
+              await releaseIssueLock(session.issueId)
+            }
+
+            // Reset session for requeue (clears workerId so new worker can claim)
+            await resetSessionForRequeue(session.trackerSessionId)
+
+            // Re-queue the work with higher priority. Starting fresh is safer
+            // than preserving a provider session from the crashed worker.
+            const work: QueuedWork = {
+              sessionId: session.trackerSessionId,
+              issueId: session.issueId,
+              issueIdentifier,
+              priority: Math.max(1, (session.priority || 3) - 1),
+              queuedAt: Date.now(),
+              prompt: session.promptContext,
+              workType: session.workType,
+              projectName: session.projectName,
+            }
+
+            return dispatchWork(work)
+          }
+        )
+        if (!execution.permitted) {
+          recordRefusalOnce(session, execution)
+          continue
         }
-
-        // Reset session for requeue (clears workerId so new worker can claim)
-        await resetSessionForRequeue(session.trackerSessionId)
-
-        // Re-queue the work with higher priority
-        // IMPORTANT: Preserve workType to prevent incorrect status transitions
-        // NOTE: Do NOT preserve providerSessionId - the old session may be corrupted
-        // from the crash that caused the orphan. Starting fresh is safer.
-        const work: QueuedWork = {
-          sessionId: session.trackerSessionId,
-          issueId: session.issueId,
-          issueIdentifier,
-          priority: Math.max(1, (session.priority || 3) - 1), // Boost priority
-          queuedAt: Date.now(),
-          prompt: session.promptContext,
-          // providerSessionId intentionally omitted - don't resume crashed sessions
-          workType: session.workType,
-          projectName: session.projectName,
-        }
-
-        const dispatchResult = await dispatchWork(work)
+        if (execution.idempotentReplay) continue
+        const dispatchResult = execution.value
 
         if (dispatchResult.dispatched || dispatchResult.parked) {
           result.requeued++
@@ -614,6 +626,7 @@ export async function cleanupOrphanedSessions(
           })
         }
       } catch (err) {
+        if (err instanceof CleanupMutationExecutionError) throw err
         log.error('Failed to cleanup orphaned session', {
           sessionId: session.trackerSessionId,
           error: err,
@@ -640,44 +653,53 @@ export async function cleanupOrphanedSessions(
         try {
           const issueIdentifier = session.issueIdentifier || session.issueId.slice(0, 8)
 
-          const decision = await beforeMutation({
-            session,
-            action: 'zombie_redispatch',
-            reason: 'pending_unqueued',
-            now: Date.now(),
-          })
-          if (!decision.permitted) {
-            recordRefusalOnce(session, decision)
-            continue
-          }
-
           log.info('Re-dispatching zombie pending session', {
             sessionId: session.trackerSessionId,
             issueIdentifier,
           })
 
-          // Release issue lock if held by this zombie session (same rationale as orphan cleanup)
-          const existingLock = await getIssueLock(session.issueId)
-          if (existingLock && existingLock.sessionId === session.trackerSessionId) {
-            log.info('Releasing issue lock held by zombie session', {
-              sessionId: session.trackerSessionId,
-              issueId: session.issueId,
-            })
-            await releaseIssueLock(session.issueId)
-          }
+          const execution = await runMutation(
+            {
+              session,
+              action: 'zombie_redispatch',
+              reason: 'pending_unqueued',
+              now: Date.now(),
+            },
+            async () => {
+              // Release issue lock if held by this zombie session (same
+              // rationale as orphan cleanup).
+              const existingLock = await getIssueLock(session.issueId)
+              if (
+                existingLock &&
+                existingLock.sessionId === session.trackerSessionId
+              ) {
+                log.info('Releasing issue lock held by zombie session', {
+                  sessionId: session.trackerSessionId,
+                  issueId: session.issueId,
+                })
+                await releaseIssueLock(session.issueId)
+              }
 
-          const work: QueuedWork = {
-            sessionId: session.trackerSessionId,
-            issueId: session.issueId,
-            issueIdentifier,
-            priority: Math.max(1, (session.priority || 3) - 1),
-            queuedAt: Date.now(),
-            prompt: session.promptContext,
-            workType: session.workType,
-            projectName: session.projectName,
-          }
+              const work: QueuedWork = {
+                sessionId: session.trackerSessionId,
+                issueId: session.issueId,
+                issueIdentifier,
+                priority: Math.max(1, (session.priority || 3) - 1),
+                queuedAt: Date.now(),
+                prompt: session.promptContext,
+                workType: session.workType,
+                projectName: session.projectName,
+              }
 
-          const dispatchResult = await dispatchWork(work)
+              return dispatchWork(work)
+            }
+          )
+          if (!execution.permitted) {
+            recordRefusalOnce(session, execution)
+            continue
+          }
+          if (execution.idempotentReplay) continue
+          const dispatchResult = execution.value
 
           if (dispatchResult.dispatched || dispatchResult.parked) {
             result.requeued++
@@ -706,6 +728,7 @@ export async function cleanupOrphanedSessions(
             })
           }
         } catch (err) {
+          if (err instanceof CleanupMutationExecutionError) throw err
           log.error('Failed to recover zombie session', {
             sessionId: session.trackerSessionId,
             error: err,
@@ -720,6 +743,7 @@ export async function cleanupOrphanedSessions(
         }
       }
     } catch (err) {
+      if (err instanceof CleanupMutationExecutionError) throw err
       log.error('Failed to find zombie pending sessions', { error: err })
     }
 
@@ -758,20 +782,24 @@ export async function cleanupOrphanedSessions(
             continue
           }
 
-          const decision = await beforeMutation({
-            session,
-            action: 'stranded_terminalize',
-            reason: 'dispatch_stranded',
-            now: Date.now(),
-          })
-          if (!decision.permitted) {
-            recordRefusalOnce(session, decision)
+          const execution = await runMutation(
+            {
+              session,
+              action: 'stranded_terminalize',
+              reason: 'dispatch_stranded',
+              now: Date.now(),
+            },
+            () =>
+              updateSessionStatus(rowSessionId, 'stopped', {
+                stoppedReason,
+              })
+          )
+          if (!execution.permitted) {
+            recordRefusalOnce(session, execution)
             continue
           }
-
-          const marked = await updateSessionStatus(rowSessionId, 'stopped', {
-            stoppedReason,
-          })
+          if (execution.idempotentReplay) continue
+          const marked = execution.value
 
           if (marked) {
             result.terminalMarked++
@@ -790,6 +818,7 @@ export async function cleanupOrphanedSessions(
             })
           }
         } catch (err) {
+          if (err instanceof CleanupMutationExecutionError) throw err
           log.error('Failed to terminal-mark stranded per-dispatch row', {
             rowSessionId,
             error: err,
@@ -804,6 +833,7 @@ export async function cleanupOrphanedSessions(
         }
       }
     } catch (err) {
+      if (err instanceof CleanupMutationExecutionError) throw err
       log.error('Failed to reconcile stranded per-dispatch rows', { error: err })
     }
 
@@ -816,6 +846,7 @@ export async function cleanupOrphanedSessions(
         log.info('Promoted pending work from expired issue locks', { promoted })
       }
     } catch (err) {
+      if (err instanceof CleanupMutationExecutionError) throw err
       log.error('Failed to cleanup expired issue locks', { error: err })
     }
 
@@ -838,6 +869,7 @@ export async function cleanupOrphanedSessions(
         }
       }
     } catch (err) {
+      if (err instanceof CleanupMutationExecutionError) throw err
       log.error('Failed to cleanup stale issue locks', { error: err })
     }
 
@@ -859,6 +891,7 @@ export async function cleanupOrphanedSessions(
       })
     }
   } catch (err) {
+    if (err instanceof CleanupMutationExecutionError) throw err
     log.error('Orphan cleanup failed', { error: err })
   }
 
