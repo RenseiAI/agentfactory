@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import '@donmai/dashboard/styles'
 import './globals.css'
 
 export const metadata: Metadata = {

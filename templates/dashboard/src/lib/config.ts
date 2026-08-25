@@ -10,6 +10,7 @@ import { createAllRoutes, createDefaultLinearClientResolver } from '@donmai/next
 export const routes = createAllRoutes({
   linearClient: createDefaultLinearClientResolver(),
   // Uncomment and customize as needed:
+  // projects: ['MyProject'],  // Only handle webhooks for these Linear projects
   // generatePrompt: (identifier, workType, mentionContext) => {
   //   return `Work on issue ${identifier} (type: ${workType})`
   // },
