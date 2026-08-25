@@ -9,7 +9,9 @@
   conditional Redis mutation. A claim can only bind a pending row, while start
   requires the same worker and an existing claim timestamp, preserves that
   timestamp exactly, and refuses stale pending snapshots instead of writing a
-  running row with missing claim evidence.
+  running row with missing claim evidence. The bundled Next.js status handler
+  now uses this transition even when a worker omits its worktree path and
+  returns a conflict before later running-only effects when start is refused.
 
 - **Cleanup mutation executor (target v0.9.13)** — `@donmai/server` cleanup
   callbacks can now wrap each complete orphan, zombie, stranded-session, and
