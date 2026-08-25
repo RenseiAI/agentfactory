@@ -96,10 +96,23 @@ export function createSessionStatusPostHandler(config?: RouteConfig) {
       }
 
       if (status === 'running') {
-        if (worktreePath) {
-          await startSession(sessionId, workerId, worktreePath)
-        } else {
-          await updateSessionStatus(sessionId, 'running')
+        const started = await startSession(
+          sessionId,
+          workerId,
+          worktreePath || session.worktreePath || ''
+        )
+        if (!started) {
+          log.warn('Session start transition rejected', {
+            sessionId,
+            workerId,
+          })
+          return NextResponse.json(
+            {
+              error: 'Conflict',
+              message: 'Session could not transition to running',
+            },
+            { status: 409 }
+          )
         }
 
         if (providerSessionId) {

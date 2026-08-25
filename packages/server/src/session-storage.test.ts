@@ -7,6 +7,7 @@ vi.mock('./redis.js', () => ({
   redisGet: vi.fn(() => null),
   redisDel: vi.fn(() => 1),
   redisKeys: vi.fn(() => []),
+  redisEval: vi.fn(() => 0),
 }))
 
 import {
@@ -17,6 +18,9 @@ import {
   updateProviderSessionId,
   deleteSessionState,
   touchSessionHeartbeat,
+  claimSession,
+  startSession,
+  type AgentSessionState,
 } from './session-storage.js'
 import {
   isRedisConfigured,
@@ -24,6 +28,7 @@ import {
   redisGet,
   redisDel,
   redisKeys,
+  redisEval,
 } from './redis.js'
 
 const mockIsRedisConfigured = vi.mocked(isRedisConfigured)
@@ -31,6 +36,7 @@ const mockRedisSet = vi.mocked(redisSet)
 const mockRedisGet = vi.mocked(redisGet)
 const mockRedisDel = vi.mocked(redisDel)
 const mockRedisKeys = vi.mocked(redisKeys)
+const mockRedisEval = vi.mocked(redisEval)
 
 function makeSessionInput() {
   return {
@@ -422,6 +428,185 @@ describe('session-storage', () => {
         expect(result).toBe(false)
         expect(mockRedisSet).not.toHaveBeenCalled()
       }
+    })
+  })
+
+  describe('worker lifecycle transitions', () => {
+    it('prevents a stale pending start snapshot from overwriting a completed claim', async () => {
+      let stored: AgentSessionState = {
+        trackerSessionId: 'session-race',
+        trackerProvider: 'linear',
+        issueId: 'issue-1',
+        providerSessionId: null,
+        worktreePath: '',
+        status: 'pending',
+        createdAt: 1_000_000,
+        updatedAt: 1_000_000,
+      }
+
+      let signalRunningWrite!: () => void
+      const runningWriteEntered = new Promise<void>((resolve) => {
+        signalRunningWrite = resolve
+      })
+      let releaseRunningWrite!: () => void
+      const runningWriteRelease = new Promise<void>((resolve) => {
+        releaseRunningWrite = resolve
+      })
+
+      mockRedisGet.mockImplementation(async () => ({ ...stored }))
+      mockRedisSet.mockImplementation(async (_key, value) => {
+        const next = value as AgentSessionState
+        if (next.status === 'running' && next.claimedAt === undefined) {
+          signalRunningWrite()
+          await runningWriteRelease
+        }
+        stored = { ...next }
+      })
+      mockRedisEval.mockImplementation(async (_script, _keys, args) => {
+        const [transition, workerId, value, now] = args
+
+        if (transition === 'start') {
+          if (
+            stored.status !== 'claimed' ||
+            stored.workerId !== workerId ||
+            typeof stored.claimedAt !== 'number'
+          ) {
+            return 0
+          }
+          stored = {
+            ...stored,
+            status: 'running',
+            worktreePath: String(value),
+            updatedAt: Number(now),
+          }
+          return 1
+        }
+
+        if (transition === 'claim') {
+          if (stored.status !== 'pending') return 0
+          stored = {
+            ...stored,
+            status: 'claimed',
+            workerId: String(workerId),
+            claimedAt: Number(now),
+            updatedAt: Number(now),
+          }
+          return 1
+        }
+
+        return 0
+      })
+
+      const staleStart = startSession(
+        'session-race',
+        'worker-claiming',
+        '/tmp/worktree'
+      )
+      const firstOutcome = await Promise.race([
+        runningWriteEntered.then(() => 'stale-write' as const),
+        staleStart.then(() => 'start-completed' as const),
+      ])
+
+      if (firstOutcome === 'stale-write') {
+        expect(await claimSession('session-race', 'worker-claiming')).toBe(true)
+        releaseRunningWrite()
+        await staleStart
+      } else {
+        expect(await staleStart).toBe(false)
+        expect(await claimSession('session-race', 'worker-claiming')).toBe(true)
+      }
+
+      expect(stored).toMatchObject({
+        status: 'claimed',
+        workerId: 'worker-claiming',
+        claimedAt: expect.any(Number),
+      })
+
+      const exactClaimedAt = stored.claimedAt
+      expect(
+        await startSession('session-race', 'worker-other', '/tmp/wrong-worker')
+      ).toBe(false)
+      expect(stored).toMatchObject({
+        status: 'claimed',
+        workerId: 'worker-claiming',
+        claimedAt: exactClaimedAt,
+      })
+
+      stored = { ...stored, claimedAt: undefined }
+      expect(
+        await startSession('session-race', 'worker-claiming', '/tmp/no-claim')
+      ).toBe(false)
+      expect(stored.status).toBe('claimed')
+      expect(stored.claimedAt).toBeUndefined()
+
+      stored = { ...stored, claimedAt: exactClaimedAt }
+      expect(
+        await startSession('session-race', 'worker-claiming', '/tmp/worktree')
+      ).toBe(true)
+      expect(stored).toMatchObject({
+        status: 'running',
+        workerId: 'worker-claiming',
+        worktreePath: '/tmp/worktree',
+        claimedAt: exactClaimedAt,
+      })
+    })
+
+    it('allows only one worker to atomically claim a pending row', async () => {
+      let stored: AgentSessionState = {
+        trackerSessionId: 'session-double-claim',
+        trackerProvider: 'linear',
+        issueId: 'issue-1',
+        providerSessionId: null,
+        worktreePath: '',
+        status: 'pending',
+        createdAt: 1_000_000,
+        updatedAt: 1_000_000,
+      }
+
+      let releaseReads!: () => void
+      const readsReleased = new Promise<void>((resolve) => {
+        releaseReads = resolve
+      })
+      let readCount = 0
+      mockRedisGet.mockImplementation(async () => {
+        const snapshot = { ...stored }
+        readCount += 1
+        if (readCount === 2) releaseReads()
+        await readsReleased
+        return snapshot
+      })
+      mockRedisSet.mockImplementation(async (_key, value) => {
+        stored = { ...(value as AgentSessionState) }
+      })
+      mockRedisEval.mockImplementation(async (_script, _keys, args) => {
+        const [transition, workerId, _value, now] = args
+        if (
+          transition !== 'claim' ||
+          stored.status !== 'pending'
+        ) {
+          return 0
+        }
+        stored = {
+          ...stored,
+          status: 'claimed',
+          workerId: String(workerId),
+          claimedAt: Number(now),
+          updatedAt: Number(now),
+        }
+        return 1
+      })
+
+      const results = await Promise.all([
+        claimSession('session-double-claim', 'worker-first'),
+        claimSession('session-double-claim', 'worker-second'),
+      ])
+
+      expect(results).toEqual([true, false])
+      expect(stored).toMatchObject({
+        status: 'claimed',
+        workerId: 'worker-first',
+        claimedAt: expect.any(Number),
+      })
     })
   })
 })

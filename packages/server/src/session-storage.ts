@@ -1,4 +1,11 @@
-import { isRedisConfigured, redisSet, redisGet, redisDel, redisKeys } from './redis.js'
+import {
+  isRedisConfigured,
+  redisSet,
+  redisGet,
+  redisDel,
+  redisKeys,
+  redisEval,
+} from './redis.js'
 import { onCostUpdated } from './fleet-quota-hooks.js'
 import type { AgentWorkType } from './types.js'
 
@@ -157,6 +164,58 @@ const SESSION_KEY_PREFIX = 'agent:session:'
  * Sessions older than this are automatically cleaned up by KV
  */
 const SESSION_TTL_SECONDS = 24 * 60 * 60
+
+/**
+ * Atomically advance the worker-owned lifecycle stored as one Redis JSON row.
+ *
+ * Both transitions execute their predicate and write in the same Redis command:
+ * - claim: pending -> claimed, binding workerId and sampling claimedAt once
+ * - start: claimed -> running, only for that worker and with claimedAt present
+ *
+ * Keeping start conditional is load-bearing. A delayed start that read pending
+ * before another worker claimed the row must never overwrite the durable claim
+ * with a running snapshot that has no claimedAt or the wrong owner.
+ */
+const ATOMIC_WORKER_LIFECYCLE_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return -1 end
+
+local decoded, session = pcall(cjson.decode, raw)
+if not decoded or type(session) ~= 'table' then return -2 end
+
+local transition = ARGV[1]
+local workerId = ARGV[2]
+local value = ARGV[3]
+local now = tonumber(ARGV[4])
+local ttlSeconds = tonumber(ARGV[5])
+if not now or not ttlSeconds then return -2 end
+
+if transition == 'claim' then
+  if session.status ~= 'pending' then return 0 end
+  session.status = 'claimed'
+  session.workerId = workerId
+  session.claimedAt = now
+elseif transition == 'start' then
+  if session.status ~= 'claimed' then return 0 end
+  if session.workerId ~= workerId then return 0 end
+  if type(session.claimedAt) ~= 'number' then return 0 end
+  session.status = 'running'
+  session.worktreePath = value
+else
+  return -2
+end
+
+if not session.trackerSessionId and session.linearSessionId then
+  session.trackerSessionId = session.linearSessionId
+end
+if not session.trackerProvider then
+  session.trackerProvider = 'linear'
+end
+session.updatedAt = now
+
+redis.call('SETEX', KEYS[1], ttlSeconds, cjson.encode(session))
+return 1
+`
 
 /**
  * Build the KV key for a session
@@ -587,32 +646,22 @@ export async function claimSession(
     return false
   }
 
-  const existing = await getSessionState(sessionId)
-  if (!existing) {
-    log.warn('Session not found for claim', { sessionId })
-    return false
-  }
-
-  if (existing.status !== 'pending') {
-    log.warn('Session not in pending status', {
-      sessionId,
-      status: existing.status,
-    })
-    return false
-  }
-
   const key = buildSessionKey(sessionId)
   const now = Date.now()
 
-  const updated: AgentSessionState = {
-    ...existing,
-    status: 'claimed',
-    workerId,
-    claimedAt: now,
-    updatedAt: now,
+  const result = await redisEval(
+    ATOMIC_WORKER_LIFECYCLE_SCRIPT,
+    [key],
+    ['claim', workerId, '', now, SESSION_TTL_SECONDS]
+  )
+  if (result !== 1) {
+    log.warn('Session claim transition rejected', {
+      sessionId,
+      workerId,
+      result,
+    })
+    return false
   }
-
-  await redisSet(key, updated, SESSION_TTL_SECONDS)
 
   log.info('Session claimed', { sessionId, workerId })
 
@@ -635,24 +684,22 @@ export async function startSession(
     return false
   }
 
-  const existing = await getSessionState(sessionId)
-  if (!existing) {
-    log.warn('Session not found for start', { sessionId })
-    return false
-  }
-
   const key = buildSessionKey(sessionId)
   const now = Date.now()
 
-  const updated: AgentSessionState = {
-    ...existing,
-    status: 'running',
-    workerId,
-    worktreePath,
-    updatedAt: now,
+  const result = await redisEval(
+    ATOMIC_WORKER_LIFECYCLE_SCRIPT,
+    [key],
+    ['start', workerId, worktreePath, now, SESSION_TTL_SECONDS]
+  )
+  if (result !== 1) {
+    log.warn('Session start transition rejected', {
+      sessionId,
+      workerId,
+      result,
+    })
+    return false
   }
-
-  await redisSet(key, updated, SESSION_TTL_SECONDS)
 
   log.info('Session started', { sessionId, workerId, worktreePath })
 
