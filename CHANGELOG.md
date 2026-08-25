@@ -4,6 +4,13 @@
 
 ### Fixes
 
+- **Atomic session claim/start transitions (target v0.9.14)** —
+  `@donmai/server` now advances worker-owned session lifecycle rows with one
+  conditional Redis mutation. A claim can only bind a pending row, while start
+  requires the same worker and an existing claim timestamp, preserves that
+  timestamp exactly, and refuses stale pending snapshots instead of writing a
+  running row with missing claim evidence.
+
 - **Cleanup mutation executor (target v0.9.13)** — `@donmai/server` cleanup
   callbacks can now wrap each complete orphan, zombie, stranded-session, and
   issue-lock mutation sequence in one awaited generic executor. Existing
