@@ -5,11 +5,13 @@
  * Reads from agent inbox streams (urgent-first) instead of pending-prompts Lists.
  */
 
+import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
   getWorker,
   popAndClaimWorkWithReceipt,
+  acknowledgeWorkClaim,
   queueWork,
   claimSession,
   addWorkerSession,
@@ -69,15 +71,15 @@ export function createWorkerPollHandler() {
         const workerProjects = worker.projects
         const hasProjectFilter = workerProjects && workerProjects.length > 0
 
-        // Atomically pop items from the queue and claim them server-side.
-        // Each popAndClaimWork() call uses ZPOPMIN — no two workers can
-        // receive the same item, eliminating claim races entirely.
+        // The global priority index selects candidates while each work item has
+        // one hash-tagged durable claim authority and replayable receipt.
         const maxAttempts = hasProjectFilter ? desiredCount * 4 : desiredCount
         const popped: QueuedWork[] = []
+        const attemptTokens = new Map<string, string>()
         const returned: QueuedWork[] = []
 
         for (let i = 0; i < maxAttempts && popped.length < desiredCount; i++) {
-          const claimResult = await popAndClaimWorkWithReceipt(workerId)
+          const claimResult = await popAndClaimWorkWithReceipt(workerId, randomUUID())
           if (claimResult.status === 'claim_refused_reconciled') {
             log.warn('Poll skipped work refused by durable reconciliation tombstone', {
               workerId,
@@ -89,6 +91,7 @@ export function createWorkerPollHandler() {
           if (claimResult.status !== 'claimed') break // Queue is empty or unavailable
 
           const item = claimResult.work
+          attemptTokens.set(item.sessionId, claimResult.attemptToken)
 
           if (hasProjectFilter) {
             if (!item.projectName || !workerProjects!.includes(item.projectName)) {
@@ -155,6 +158,13 @@ export function createWorkerPollHandler() {
             }
 
             await addWorkerSession(workerId, item.sessionId)
+            const attemptToken = attemptTokens.get(item.sessionId)
+            if (!attemptToken || !await acknowledgeWorkClaim(item.sessionId, attemptToken)) {
+              log.warn('Claim delivery acknowledgement deferred', {
+                sessionId: item.sessionId,
+                workerId,
+              })
+            }
             claimedSessionIds.push(item.sessionId)
 
             onSessionClaimed(item.projectName, item.sessionId).catch((err) => {

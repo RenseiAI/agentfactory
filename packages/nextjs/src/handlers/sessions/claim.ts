@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
   claimWorkWithReceipt,
+  acknowledgeWorkClaim,
   requeueWork,
   releaseClaim,
   claimSession,
@@ -34,16 +35,21 @@ export function createSessionClaimHandler() {
 
     try {
       const body = await request.json()
-      const { workerId } = body as { workerId: string }
+      const { workerId, attemptToken } = body as { workerId: string; attemptToken: string }
 
-      if (!workerId || typeof workerId !== 'string') {
+      if (
+        !workerId ||
+        typeof workerId !== 'string' ||
+        !attemptToken ||
+        typeof attemptToken !== 'string'
+      ) {
         return NextResponse.json(
-          { error: 'Bad Request', message: 'workerId is required' },
+          { error: 'Bad Request', message: 'workerId and attemptToken are required' },
           { status: 400 }
         )
       }
 
-      const claimResult = await claimWorkWithReceipt(sessionId, workerId)
+      const claimResult = await claimWorkWithReceipt(sessionId, workerId, attemptToken)
 
       if (claimResult.status === 'claim_refused_reconciled') {
         log.warn('Claim refused by durable reconciliation tombstone', {
@@ -142,6 +148,14 @@ export function createSessionClaimHandler() {
         claimSucceeded = true
 
         await addWorkerSession(workerId, sessionId)
+
+        // Session ownership is now durable, so the queue payload may cross its
+        // explicit delivery boundary. A failed acknowledgement is retained for
+        // same-token retry rather than turning this completed claim into loss.
+        const acknowledged = await acknowledgeWorkClaim(sessionId, attemptToken)
+        if (!acknowledged) {
+          log.warn('Claim delivery acknowledgement deferred', { sessionId, workerId })
+        }
 
         // Fleet quota: track concurrent session for this project
         onSessionClaimed(work.projectName, sessionId).catch((err) => {

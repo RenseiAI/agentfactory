@@ -4,10 +4,12 @@ import { disconnectRedis, getRedisClient } from './redis.js'
 import {
   getWorkClaimKey,
   getWorkReconciliationTombstoneKey,
+  getWorkStateKey,
   WORK_ITEMS_KEY,
   WORK_QUEUE_KEY,
   queueWork,
   claimWorkWithReceipt,
+  acknowledgeWorkClaim,
   popAndClaimWorkWithReceipt,
   reconcileWork,
   type QueuedWork,
@@ -45,6 +47,21 @@ function makeWork(id: string): QueuedWork {
   }
 }
 
+function redisClusterSlot(key: string): number {
+  const start = key.indexOf('{')
+  const end = start === -1 ? -1 : key.indexOf('}', start + 1)
+  const tag = start !== -1 && end > start + 1 ? key.slice(start + 1, end) : key
+  let crc = 0
+  for (const byte of Buffer.from(tag)) {
+    crc ^= byte << 8
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc & 0x8000) === 0 ? (crc << 1) : ((crc << 1) ^ 0x1021)
+      crc &= 0xffff
+    }
+  }
+  return crc % 16384
+}
+
 async function expectQueueArtifactsRemoved(id: string): Promise<void> {
   await expect(redis.zscore(WORK_QUEUE_KEY, id)).resolves.toBeNull()
   await expect(redis.hget(WORK_ITEMS_KEY, id)).resolves.toBeNull()
@@ -64,6 +81,17 @@ afterAll(async () => {
 })
 
 describe('work queue reconciliation fence against real Redis', () => {
+  it('uses one hash-tagged authority slot for claim and reconciliation state', () => {
+    const id = sessionId('cluster-slot')
+    const stateKey = getWorkStateKey(id)
+
+    expect(stateKey).toMatch(/^work:state:\{.+\}$/)
+    expect(redisClusterSlot(stateKey)).toBe(redisClusterSlot(getWorkClaimKey(id)))
+    expect(redisClusterSlot(stateKey)).toBe(
+      redisClusterSlot(getWorkReconciliationTombstoneKey(id))
+    )
+  })
+
   it('serializes a concurrent reconcile and claims to exactly one winner', async () => {
     const id = sessionId('race')
     await expect(queueWork(makeWork(id))).resolves.toBe(true)
@@ -71,7 +99,7 @@ describe('work queue reconciliation fence against real Redis', () => {
     const [reconciliation, ...claims] = await Promise.all([
       reconcileWork(id, { generation: 'generation-race', ttlSeconds: 300 }),
       ...Array.from({ length: 24 }, (_, index) =>
-        claimWorkWithReceipt(id, `worker-${index}`)
+        claimWorkWithReceipt(id, `worker-${index}`, `attempt-race-${index}`)
       ),
     ])
 
@@ -85,7 +113,9 @@ describe('work queue reconciliation fence against real Redis', () => {
           expect.objectContaining({ status: 'claim_refused_reconciled' }),
         ])
       )
-      await expect(redis.get(getWorkClaimKey(id))).resolves.toBeNull()
+      await expect(redis.get(getWorkStateKey(id))).resolves.toMatch(
+        /"tombstone"/
+      )
       await expectQueueArtifactsRemoved(id)
     } else {
       expect(reconciliation).toEqual({
@@ -107,14 +137,14 @@ describe('work queue reconciliation fence against real Redis', () => {
       status: 'reconcile_tombstone_written',
       generation: 'generation-direct',
     })
-    await expect(queueWork(makeWork(directId))).resolves.toBe(true)
-
-    await expect(claimWorkWithReceipt(directId, 'worker-direct')).resolves.toEqual({
+    await expect(claimWorkWithReceipt(directId, 'worker-direct', 'attempt-direct')).resolves.toEqual({
       status: 'claim_refused_reconciled',
       sessionId: directId,
       reconciliationGeneration: 'generation-direct',
     })
-    await expect(redis.get(getWorkClaimKey(directId))).resolves.toBeNull()
+    await expect(redis.get(getWorkStateKey(directId))).resolves.toMatch(
+      /"tombstone"/
+    )
     await expectQueueArtifactsRemoved(directId)
 
     await expect(
@@ -123,14 +153,20 @@ describe('work queue reconciliation fence against real Redis', () => {
       status: 'reconcile_tombstone_written',
       generation: 'generation-poll',
     })
-    await expect(queueWork(makeWork(pollId))).resolves.toBe(true)
+    // Simulate a delayed non-authoritative index write after reconciliation.
+    // The colocated state tombstone remains authoritative and poll must refuse.
+    const pollWork = makeWork(pollId)
+    await redis.hset(WORK_ITEMS_KEY, pollId, JSON.stringify(pollWork))
+    await redis.zadd(WORK_QUEUE_KEY, pollWork.priority, pollId)
 
-    await expect(popAndClaimWorkWithReceipt('worker-poll')).resolves.toEqual({
+    await expect(popAndClaimWorkWithReceipt('worker-poll', 'attempt-poll')).resolves.toEqual({
       status: 'claim_refused_reconciled',
       sessionId: pollId,
       reconciliationGeneration: 'generation-poll',
     })
-    await expect(redis.get(getWorkClaimKey(pollId))).resolves.toBeNull()
+    await expect(redis.get(getWorkStateKey(pollId))).resolves.toMatch(
+      /"tombstone"/
+    )
     await expectQueueArtifactsRemoved(pollId)
   })
 
@@ -139,11 +175,14 @@ describe('work queue reconciliation fence against real Redis', () => {
     await expect(
       reconcileWork(ttlId, { generation: 'generation-ttl', ttlSeconds: 300 })
     ).resolves.toMatchObject({ status: 'reconcile_tombstone_written' })
-    expect(await redis.ttl(getWorkReconciliationTombstoneKey(ttlId))).toBeGreaterThanOrEqual(298)
+    const ttlState = JSON.parse(await redis.get(getWorkStateKey(ttlId)) ?? '{}') as {
+      tombstone?: { expiresAt?: number }
+    }
+    expect((ttlState.tombstone?.expiresAt ?? 0) - Date.now()).toBeGreaterThanOrEqual(298_000)
 
     const claimedId = sessionId('claim-first')
     await expect(queueWork(makeWork(claimedId))).resolves.toBe(true)
-    await expect(claimWorkWithReceipt(claimedId, 'worker-first')).resolves.toMatchObject({
+    await expect(claimWorkWithReceipt(claimedId, 'worker-first', 'attempt-first')).resolves.toMatchObject({
       status: 'claimed',
       workerId: 'worker-first',
     })
@@ -154,6 +193,27 @@ describe('work queue reconciliation fence against real Redis', () => {
       sessionId: claimedId,
       workerId: 'worker-first',
     })
-    await expect(redis.get(getWorkReconciliationTombstoneKey(claimedId))).resolves.toBeNull()
+    await expect(redis.get(getWorkStateKey(claimedId))).resolves.toMatch(
+      /"claim"/
+    )
+  })
+
+  it('retains the payload through same-token replay until delivery acknowledgement', async () => {
+    const id = sessionId('delivery-boundary')
+    const work = makeWork(id)
+    const attemptToken = 'attempt-delivery-boundary'
+    await expect(queueWork(work)).resolves.toBe(true)
+
+    const first = await claimWorkWithReceipt(id, 'worker-delivery', attemptToken)
+    expect(first).toMatchObject({ status: 'claimed', attemptToken, work })
+    await expect(redis.get(getWorkStateKey(id))).resolves.toMatch(/"work"/)
+
+    await expect(
+      claimWorkWithReceipt(id, 'worker-delivery', attemptToken)
+    ).resolves.toEqual(first)
+
+    await expect(acknowledgeWorkClaim(id, attemptToken)).resolves.toBe(true)
+    expect(await redis.get(getWorkStateKey(id))).not.toContain('"work"')
+    await expectQueueArtifactsRemoved(id)
   })
 })

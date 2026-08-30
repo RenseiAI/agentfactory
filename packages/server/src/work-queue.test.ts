@@ -81,10 +81,28 @@ function makeWork(overrides: Partial<QueuedWork> = {}): QueuedWork {
   }
 }
 
+function claimedScriptReply(
+  work: QueuedWork,
+  attemptToken = 'attempt-1',
+  workerId = 'worker-1'
+): [string, string, string] {
+  return [
+    'claimed',
+    JSON.stringify(work),
+    JSON.stringify({
+      attemptToken,
+      workerId,
+      claimedAt: 1_234_567,
+      expiresAt: 1_234_567 + 3_600_000,
+    }),
+  ]
+}
+
 describe('queueWork', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisEval.mockResolvedValue(['queued'])
   })
 
   it('returns false when Redis is not configured', async () => {
@@ -225,20 +243,15 @@ describe('claimWork', () => {
 
   it('returns work from one Redis Lua transition on successful claim', async () => {
     const work = makeWork({ sessionId: 'session-1' })
-    mockRedisEval.mockResolvedValue(['claimed', JSON.stringify(work)])
+    mockRedisEval.mockResolvedValue(claimedScriptReply(work))
 
     const result = await claimWork('session-1', 'worker-1')
 
     expect(result).toEqual(work)
     expect(mockRedisEval).toHaveBeenCalledWith(
-      expect.stringContaining("redis.call('GET', KEYS[2])"),
-      [
-        'work:claim:session-1',
-        'work:reconciliation:session-1',
-        'work:items',
-        'work:queue',
-      ],
-      ['worker-1', expect.any(Number), 'session-1']
+      expect.stringContaining("redis.call('GET', KEYS[1])"),
+      ['work:state:{session-1}'],
+      [expect.any(String), 'worker-1', expect.any(Number), expect.any(Number)]
     )
     expect(mockRedisHGet).not.toHaveBeenCalled()
     expect(mockRedisZRem).not.toHaveBeenCalled()
@@ -263,6 +276,14 @@ describe('claimWork', () => {
 
     expect(result).toBeNull()
   })
+
+  it('surfaces CROSSSLOT rather than converting it to an unavailable claim', async () => {
+    mockRedisEval.mockRejectedValue(new Error('CROSSSLOT Keys in request do not hash to the same slot'))
+
+    await expect(
+      claimWorkWithReceipt('session-crossslot', 'worker-crossslot', 'attempt-crossslot')
+    ).rejects.toThrow('CROSSSLOT')
+  })
 })
 
 describe('claimWorkWithReceipt', () => {
@@ -277,7 +298,7 @@ describe('claimWorkWithReceipt', () => {
       JSON.stringify({ generation: 'generation-9' }),
     ])
 
-    await expect(claimWorkWithReceipt('session-9', 'worker-9')).resolves.toEqual({
+    await expect(claimWorkWithReceipt('session-9', 'worker-9', 'attempt-9')).resolves.toEqual({
       status: 'claim_refused_reconciled',
       sessionId: 'session-9',
       reconciliationGeneration: 'generation-9',
@@ -309,14 +330,9 @@ describe('reconcileWork', () => {
       generation: 'generation-11',
     })
     expect(mockRedisEval).toHaveBeenCalledWith(
-      expect.stringContaining("redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[2])"),
-      [
-        'work:claim:session-11',
-        'work:reconciliation:session-11',
-        'work:items',
-        'work:queue',
-      ],
-      [JSON.stringify({ generation: 'generation-11' }), 7200, 'session-11']
+      expect.stringContaining('state.tombstone = { generation = generation'),
+      ['work:state:{session-11}'],
+      ['generation-11', 7_200_000, expect.any(Number)]
     )
   })
 
@@ -349,13 +365,17 @@ describe('releaseClaim', () => {
     expect(result).toBe(false)
   })
 
-  it('returns true when claim key deleted', async () => {
-    mockRedisDel.mockResolvedValue(1)
+  it('returns true when the claim field is cleared in colocated state', async () => {
+    mockRedisEval.mockResolvedValue(1)
 
     const result = await releaseClaim('session-1')
 
     expect(result).toBe(true)
-    expect(mockRedisDel).toHaveBeenCalledWith('work:claim:session-1')
+    expect(mockRedisEval).toHaveBeenCalledWith(
+      expect.stringContaining('state.claim = nil'),
+      ['work:state:{session-1}'],
+      []
+    )
   })
 })
 
@@ -371,13 +391,20 @@ describe('getClaimOwner', () => {
     expect(result).toBeNull()
   })
 
-  it('returns worker ID from claim key', async () => {
-    mockRedisGet.mockResolvedValue('worker-42')
+  it('returns worker ID from a live claim field', async () => {
+    mockRedisGet.mockResolvedValue({
+      claim: {
+        attemptToken: 'attempt-42',
+        workerId: 'worker-42',
+        claimedAt: 1,
+        expiresAt: Date.now() + 60_000,
+      },
+    })
 
     const result = await getClaimOwner('session-1')
 
     expect(result).toBe('worker-42')
-    expect(mockRedisGet).toHaveBeenCalledWith('work:claim:session-1')
+    expect(mockRedisGet).toHaveBeenCalledWith('work:state:{session-1}')
   })
 })
 
@@ -393,17 +420,17 @@ describe('isSessionInQueue', () => {
     expect(result).toBe(false)
   })
 
-  it('returns true when session exists in hash', async () => {
-    mockRedisHGet.mockResolvedValue(JSON.stringify(makeWork()))
+  it('returns true when a pending payload exists in colocated state', async () => {
+    mockRedisGet.mockResolvedValue({ work: makeWork() })
 
     const result = await isSessionInQueue('session-1')
 
     expect(result).toBe(true)
-    expect(mockRedisHGet).toHaveBeenCalledWith('work:items', 'session-1')
+    expect(mockRedisGet).toHaveBeenCalledWith('work:state:{session-1}')
   })
 
   it('returns false when session not in hash', async () => {
-    mockRedisHGet.mockResolvedValue(null)
+    mockRedisGet.mockResolvedValue(null)
 
     const result = await isSessionInQueue('session-1')
     expect(result).toBe(false)
@@ -417,7 +444,7 @@ describe('requeueWork', () => {
   })
 
   it('re-queues with boosted priority', async () => {
-    mockRedisDel.mockResolvedValue(1) // releaseClaim
+    mockRedisEval.mockResolvedValueOnce(1).mockResolvedValueOnce(['queued'])
     mockRedisHSet.mockResolvedValue(1)
     mockRedisZAdd.mockResolvedValue(1)
 
@@ -432,18 +459,22 @@ describe('requeueWork', () => {
   })
 
   it('releases existing claim before re-queuing', async () => {
-    mockRedisDel.mockResolvedValue(1)
+    mockRedisEval.mockResolvedValueOnce(1).mockResolvedValueOnce(['queued'])
     mockRedisHSet.mockResolvedValue(1)
     mockRedisZAdd.mockResolvedValue(1)
 
     const work = makeWork({ sessionId: 'sess-requeue' })
     await requeueWork(work)
 
-    expect(mockRedisDel).toHaveBeenCalledWith('work:claim:sess-requeue')
+    expect(mockRedisEval).toHaveBeenCalledWith(
+      expect.stringContaining('state.claim = nil'),
+      ['work:state:{sess-requeue}'],
+      []
+    )
   })
 
   it('clamps priority to minimum 1', async () => {
-    mockRedisDel.mockResolvedValue(1)
+    mockRedisEval.mockResolvedValueOnce(1).mockResolvedValueOnce(['queued'])
     mockRedisHSet.mockResolvedValue(1)
     mockRedisZAdd.mockResolvedValue(1)
 
@@ -470,6 +501,7 @@ describe('removeFromQueue', () => {
   })
 
   it('removes from both sorted set and hash', async () => {
+    mockRedisEval.mockResolvedValue(1)
     mockRedisZRem.mockResolvedValue(1)
     mockRedisHDel.mockResolvedValue(1)
 
@@ -494,30 +526,31 @@ describe('popAndClaimWork', () => {
   })
 
   it('returns null when queue is empty', async () => {
-    mockRedisEval.mockResolvedValue(['claim_unavailable'])
+    mockRedisZRangeByScore.mockResolvedValue([])
     const result = await popAndClaimWork('worker-1')
     expect(result).toBeNull()
   })
 
   it('pops highest-priority item and claims it in one Redis Lua transition', async () => {
     const work = makeWork()
-    mockRedisEval.mockResolvedValue(['claimed', JSON.stringify(work), 'session-1'])
+    mockRedisZRangeByScore.mockResolvedValue(['session-1'])
+    mockRedisEval.mockResolvedValue(claimedScriptReply(work))
 
     const result = await popAndClaimWork('worker-1')
 
     expect(result).toEqual(work)
     expect(mockRedisEval).toHaveBeenCalledWith(
-      expect.stringContaining("redis.call('ZRANGE', KEYS[2], 0, 0)"),
-      ['work:items', 'work:queue'],
-      ['worker-1', expect.any(Number), 'work:claim:', 'work:reconciliation:']
+      expect.stringContaining("redis.call('GET', KEYS[1])"),
+      ['work:state:{session-1}'],
+      [expect.any(String), 'worker-1', expect.any(Number), expect.any(Number)]
     )
   })
 
   it('returns null when a popped item is refused by reconciliation', async () => {
+    mockRedisZRangeByScore.mockResolvedValue(['session-13'])
     mockRedisEval.mockResolvedValue([
       'claim_refused_reconciled',
       JSON.stringify({ generation: 'generation-13' }),
-      'session-13',
     ])
 
     const result = await popAndClaimWork('worker-1')
@@ -526,6 +559,7 @@ describe('popAndClaimWork', () => {
   })
 
   it('returns null on error', async () => {
+    mockRedisZRangeByScore.mockResolvedValue(['session-1'])
     mockRedisEval.mockRejectedValue(new Error('Redis down'))
 
     const result = await popAndClaimWork('worker-1')
@@ -541,13 +575,13 @@ describe('popAndClaimWorkWithReceipt', () => {
   })
 
   it('returns the reconciliation refusal with its selected session ID', async () => {
+    mockRedisZRangeByScore.mockResolvedValue(['session-14'])
     mockRedisEval.mockResolvedValue([
       'claim_refused_reconciled',
       JSON.stringify({ generation: 'generation-14' }),
-      'session-14',
     ])
 
-    await expect(popAndClaimWorkWithReceipt('worker-14')).resolves.toEqual({
+    await expect(popAndClaimWorkWithReceipt('worker-14', 'attempt-14')).resolves.toEqual({
       status: 'claim_refused_reconciled',
       sessionId: 'session-14',
       reconciliationGeneration: 'generation-14',

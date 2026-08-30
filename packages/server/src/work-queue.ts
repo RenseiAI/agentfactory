@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 /**
  * Work Queue Module (Optimized)
  *
@@ -5,19 +7,18 @@
  * Workers poll this queue to claim and process work.
  *
  * Data Structures (optimized for high concurrency):
- * - work:items (Hash): sessionId -> JSON work item - O(1) lookup
- * - work:queue (Sorted Set): score = priority, member = sessionId - O(log n) operations
- * - work:claim:{sessionId} (String): workerId with TTL - atomic claims
+ * - work:queue (Sorted Set): non-authoritative priority index
+ * - work:items (Hash): non-authoritative scheduler payload index
+ * - work:state:{sessionId} (String): hash-tagged claim, receipt, payload, and tombstone authority
  *
  * Performance:
  * - queueWork: O(log n) - HSET + ZADD
- * - claimWork: O(log n) - SETNX + HGET + ZREM
+ * - claimWork: O(1) - one colocated state Lua transition
  * - peekWork: O(log n + k) - ZRANGEBYSCORE + HMGET where k = limit
  * - getQueueLength: O(1) - ZCARD
  */
 
 import {
-  redisDel,
   redisGet,
   redisEval,
   redisZAdd,
@@ -25,10 +26,8 @@ import {
   redisZRangeByScore,
   redisZCard,
   redisHSet,
-  redisHGet,
   redisHDel,
   redisHMGet,
-  redisHGetAll,
   isRedisConfigured,
   // Legacy list operations for migration
   redisLRange,
@@ -48,8 +47,11 @@ const log = {
 // Redis key constants (exported for scheduling-queue.ts reuse)
 export const WORK_QUEUE_KEY = 'work:queue' // Sorted set: priority queue
 export const WORK_ITEMS_KEY = 'work:items' // Hash: sessionId -> work item
-export const WORK_CLAIM_PREFIX = 'work:claim:'
-export const WORK_RECONCILIATION_TOMBSTONE_PREFIX = 'work:reconciliation:'
+export const WORK_STATE_PREFIX = 'work:state:'
+/** @deprecated Claim authority now lives in the colocated work-state record. */
+export const WORK_CLAIM_PREFIX = WORK_STATE_PREFIX
+/** @deprecated Reconciliation authority now lives in the colocated work-state record. */
+export const WORK_RECONCILIATION_TOMBSTONE_PREFIX = WORK_STATE_PREFIX
 
 // Legacy key for migration
 const LEGACY_QUEUE_KEY = 'work:queue:legacy'
@@ -73,6 +75,8 @@ export interface WorkClaimReceipt {
   status: 'claimed'
   sessionId: string
   workerId: string
+  attemptToken: string
+  claimedAt: number
   work: QueuedWork
 }
 
@@ -89,11 +93,19 @@ export interface WorkClaimUnavailable {
   sessionId: string
 }
 
+/** A different active attempt owns the durable work payload. */
+export interface WorkClaimInProgress {
+  status: 'claim_in_progress'
+  sessionId: string
+  workerId: string | null
+}
+
 /** Typed outcome for consumers that must distinguish reconciliation refusal. */
 export type WorkClaimResult =
   | WorkClaimReceipt
   | WorkClaimRefusedReconciled
   | WorkClaimUnavailable
+  | WorkClaimInProgress
 
 /** Successful durable reconciliation receipt. */
 export interface WorkReconciliationReceipt {
@@ -131,100 +143,177 @@ export type WorkReconciliationResult =
 
 type LuaTuple = [string, ...string[]]
 
-const CLAIM_WORK_SCRIPT = `
-local tombstone = redis.call('GET', KEYS[2])
-if tombstone then
-  -- A delayed producer can requeue work after reconciliation. Remove only the
-  -- stale queue artifacts; the tombstone remains the durable refusal record.
-  redis.call('ZREM', KEYS[4], ARGV[3])
-  redis.call('HDEL', KEYS[3], ARGV[3])
-  return {'claim_refused_reconciled', tombstone}
+const ENQUEUE_WORK_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+local state = {}
+if raw then
+  local decoded, parsed = pcall(cjson.decode, raw)
+  if not decoded or type(parsed) ~= 'table' then return {'queue_unavailable'} end
+  state = parsed
 end
 
-if redis.call('EXISTS', KEYS[1]) == 1 then
-  return {'claim_unavailable'}
+local now = tonumber(ARGV[2])
+if state.tombstone then
+  local expiresAt = tonumber(state.tombstone.expiresAt)
+  if expiresAt and expiresAt > now then
+    return {'queue_refused_reconciled'}
+  end
+  state.tombstone = nil
+end
+if state.delivery then return {'queue_unavailable'} end
+if state.claim then
+  local expiresAt = tonumber(state.claim.expiresAt)
+  if expiresAt and expiresAt > now then return {'queue_unavailable'} end
+  state.claim = nil
 end
 
-local item = redis.call('HGET', KEYS[3], ARGV[3])
-if not item then
-  return {'claim_unavailable'}
-end
-
-if not redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2]) then
-  return {'claim_unavailable'}
-end
-
-if redis.call('ZREM', KEYS[4], ARGV[3]) ~= 1 then
-  redis.call('DEL', KEYS[1])
-  return {'claim_unavailable'}
-end
-
-redis.call('HDEL', KEYS[3], ARGV[3])
-return {'claimed', item}
+local decodedWork, work = pcall(cjson.decode, ARGV[1])
+if not decodedWork or type(work) ~= 'table' then return {'queue_unavailable'} end
+state.work = work
+redis.call('SET', KEYS[1], cjson.encode(state))
+return {'queued'}
 `
 
-const POP_AND_CLAIM_WORK_SCRIPT = `
-local sessionIds = redis.call('ZRANGE', KEYS[2], 0, 0)
-if #sessionIds == 0 then
-  return {'claim_unavailable'}
+const CLAIM_WORK_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return {'claim_unavailable'} end
+local decoded, state = pcall(cjson.decode, raw)
+if not decoded or type(state) ~= 'table' then return {'claim_unavailable'} end
+
+local attemptToken = ARGV[1]
+local workerId = ARGV[2]
+local ttlMs = tonumber(ARGV[3])
+local now = tonumber(ARGV[4])
+if not ttlMs or not now then return {'claim_unavailable'} end
+
+if state.tombstone then
+  local expiresAt = tonumber(state.tombstone.expiresAt)
+  if expiresAt and expiresAt > now then
+    return {'claim_refused_reconciled', cjson.encode(state.tombstone)}
+  end
+  state.tombstone = nil
+end
+if state.delivery or not state.work then return {'claim_unavailable'} end
+
+if state.claim then
+  if state.claim.attemptToken == attemptToken then
+    if state.claim.workerId ~= workerId then
+      return {'claim_in_progress', tostring(state.claim.workerId or '')}
+    end
+    return {'claimed', cjson.encode(state.work), cjson.encode(state.claim)}
+  end
+  local expiresAt = tonumber(state.claim.expiresAt)
+  if expiresAt and expiresAt > now then
+    return {'claim_in_progress', tostring(state.claim.workerId or '')}
+  end
+  state.claim = nil
 end
 
-local sessionId = sessionIds[1]
-local claimKey = ARGV[3] .. sessionId
-local tombstoneKey = ARGV[4] .. sessionId
-local tombstone = redis.call('GET', tombstoneKey)
-if tombstone then
-  redis.call('ZREM', KEYS[2], sessionId)
-  redis.call('HDEL', KEYS[1], sessionId)
-  return {'claim_refused_reconciled', tombstone, sessionId}
-end
-
-local item = redis.call('HGET', KEYS[1], sessionId)
-if not item then
-  redis.call('ZREM', KEYS[2], sessionId)
-  return {'claim_unavailable', '', sessionId}
-end
-
-if redis.call('EXISTS', claimKey) == 1 then
-  return {'claim_unavailable', '', sessionId}
-end
-
-if not redis.call('SET', claimKey, ARGV[1], 'NX', 'EX', ARGV[2]) then
-  return {'claim_unavailable', '', sessionId}
-end
-
-if redis.call('ZREM', KEYS[2], sessionId) ~= 1 then
-  redis.call('DEL', claimKey)
-  return {'claim_unavailable', '', sessionId}
-end
-
-redis.call('HDEL', KEYS[1], sessionId)
-return {'claimed', item, sessionId}
+state.claim = {
+  attemptToken = attemptToken,
+  workerId = workerId,
+  claimedAt = now,
+  expiresAt = now + ttlMs,
+}
+redis.call('SET', KEYS[1], cjson.encode(state))
+return {'claimed', cjson.encode(state.work), cjson.encode(state.claim)}
 `
 
 const RECONCILE_WORK_SCRIPT = `
-local existing = redis.call('GET', KEYS[2])
-if existing then
-  if existing == ARGV[1] then
-    local existingTtl = redis.call('TTL', KEYS[2])
-    local requestedTtl = tonumber(ARGV[2])
-    if existingTtl >= 0 and requestedTtl > existingTtl then
-      redis.call('EXPIRE', KEYS[2], requestedTtl)
+local raw = redis.call('GET', KEYS[1])
+local state = {}
+if raw then
+  local decoded, parsed = pcall(cjson.decode, raw)
+  if not decoded or type(parsed) ~= 'table' then return {'reconcile_unavailable'} end
+  state = parsed
+end
+
+local generation = ARGV[1]
+local ttlMs = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+if not ttlMs or not now then return {'reconcile_unavailable'} end
+
+if state.tombstone then
+  local expiresAt = tonumber(state.tombstone.expiresAt)
+  if expiresAt and expiresAt > now then
+    if state.tombstone.generation == generation then
+      if ttlMs > (expiresAt - now) then state.tombstone.expiresAt = now + ttlMs end
+      redis.call('SET', KEYS[1], cjson.encode(state))
+      return {'reconcile_tombstone_exists', cjson.encode(state.tombstone)}
     end
-    return {'reconcile_tombstone_exists', existing}
+    return {'reconcile_generation_conflict', cjson.encode(state.tombstone)}
   end
-  return {'reconcile_generation_conflict', existing}
+  state.tombstone = nil
 end
 
-local workerId = redis.call('GET', KEYS[1])
-if workerId then
-  return {'reconcile_refused_claimed', workerId}
+if state.claim then
+  local expiresAt = tonumber(state.claim.expiresAt)
+  if expiresAt and expiresAt > now then
+    return {'reconcile_refused_claimed', tostring(state.claim.workerId or '')}
+  end
+  state.claim = nil
 end
 
-redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[2])
-redis.call('ZREM', KEYS[4], ARGV[3])
-redis.call('HDEL', KEYS[3], ARGV[3])
-return {'reconcile_tombstone_written', ARGV[1]}
+state.tombstone = { generation = generation, expiresAt = now + ttlMs }
+redis.call('SET', KEYS[1], cjson.encode(state))
+return {'reconcile_tombstone_written', cjson.encode(state.tombstone)}
+`
+
+const RELEASE_CLAIM_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return 0 end
+local decoded, state = pcall(cjson.decode, raw)
+if not decoded or type(state) ~= 'table' then return 0 end
+if not state.claim then return 0 end
+state.claim = nil
+if not state.work and not state.tombstone and not state.delivery then
+  redis.call('DEL', KEYS[1])
+else
+  redis.call('SET', KEYS[1], cjson.encode(state))
+end
+return 1
+`
+
+const ACKNOWLEDGE_CLAIM_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return {'claim_delivery_unavailable'} end
+local decoded, state = pcall(cjson.decode, raw)
+if not decoded or type(state) ~= 'table' then return {'claim_delivery_unavailable'} end
+local attemptToken = ARGV[1]
+local now = tonumber(ARGV[2])
+local ttlSeconds = tonumber(ARGV[3])
+if not now or not ttlSeconds then return {'claim_delivery_unavailable'} end
+
+if state.delivery and state.delivery.attemptToken == attemptToken then
+  return {'claim_delivery_acknowledged'}
+end
+if not state.claim or state.claim.attemptToken ~= attemptToken then
+  return {'claim_delivery_unavailable'}
+end
+state.delivery = {
+  attemptToken = attemptToken,
+  workerId = state.claim.workerId,
+  deliveredAt = now,
+}
+state.claim = nil
+state.work = nil
+redis.call('SETEX', KEYS[1], ttlSeconds, cjson.encode(state))
+return {'claim_delivery_acknowledged'}
+`
+
+const REMOVE_WORK_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return 0 end
+local decoded, state = pcall(cjson.decode, raw)
+if not decoded or type(state) ~= 'table' then return 0 end
+if state.claim then return 0 end
+state.work = nil
+if not state.claim and not state.tombstone and not state.delivery then
+  redis.call('DEL', KEYS[1])
+else
+  redis.call('SET', KEYS[1], cjson.encode(state))
+end
+return 1
 `
 
 /**
@@ -274,14 +363,42 @@ export function calculateScore(priority: number, queuedAt: number): number {
   return clampedPriority * 1e13 + queuedAt
 }
 
-/** Build the Redis key that records a worker's active work claim. */
-export function getWorkClaimKey(sessionId: string): string {
-  return `${WORK_CLAIM_PREFIX}${sessionId}`
+interface StoredWorkClaim {
+  attemptToken: string
+  workerId: string
+  claimedAt: number
+  expiresAt: number
 }
 
-/** Build the Redis key for the durable per-work reconciliation tombstone. */
+interface StoredWorkTombstone {
+  generation: string
+  expiresAt: number
+}
+
+interface StoredWorkState {
+  work?: QueuedWork
+  claim?: StoredWorkClaim
+  tombstone?: StoredWorkTombstone
+  delivery?: { attemptToken: string; workerId: string; deliveredAt: number }
+}
+
+/**
+ * Build the single Redis Cluster-colocated authority key for one work item.
+ * The encoded session ID is the hash tag, so every Lua transition uses exactly
+ * one key and cannot span cluster slots.
+ */
+export function getWorkStateKey(sessionId: string): string {
+  return `${WORK_STATE_PREFIX}{${encodeURIComponent(sessionId)}}`
+}
+
+/** @deprecated Use getWorkStateKey; claims are fields in that record. */
+export function getWorkClaimKey(sessionId: string): string {
+  return getWorkStateKey(sessionId)
+}
+
+/** @deprecated Use getWorkStateKey; tombstones are fields in that record. */
 export function getWorkReconciliationTombstoneKey(sessionId: string): string {
-  return `${WORK_RECONCILIATION_TOMBSTONE_PREFIX}${sessionId}`
+  return getWorkStateKey(sessionId)
 }
 
 function asLuaTuple(result: unknown): LuaTuple | null {
@@ -306,13 +423,35 @@ function readTombstoneGeneration(serialized: string | undefined): string | null 
   }
 }
 
+function readClaimReceipt(serialized: string | undefined): StoredWorkClaim | null {
+  if (!serialized) return null
+  try {
+    const parsed = JSON.parse(serialized) as Partial<StoredWorkClaim>
+    if (
+      typeof parsed.attemptToken !== 'string' ||
+      typeof parsed.workerId !== 'string' ||
+      typeof parsed.claimedAt !== 'number'
+    ) {
+      return null
+    }
+    return {
+      attemptToken: parsed.attemptToken,
+      workerId: parsed.workerId,
+      claimedAt: parsed.claimedAt,
+      expiresAt: typeof parsed.expiresAt === 'number' ? parsed.expiresAt : 0,
+    }
+  } catch {
+    return null
+  }
+}
+
 function decodeClaimResult(
   rawResult: unknown,
   workerId: string,
   fallbackSessionId?: string
 ): WorkClaimResult {
   const result = asLuaTuple(rawResult)
-  const sessionId = fallbackSessionId ?? result?.[2] ?? ''
+  const sessionId = fallbackSessionId ?? result?.[3] ?? ''
 
   if (!result) {
     return { status: 'claim_unavailable', sessionId }
@@ -326,13 +465,33 @@ function decodeClaimResult(
     }
   }
 
+  if (result[0] === 'claim_in_progress') {
+    return {
+      status: 'claim_in_progress',
+      sessionId,
+      workerId: result[1] || null,
+    }
+  }
+
   if (result[0] !== 'claimed' || !result[1]) {
+    return { status: 'claim_unavailable', sessionId }
+  }
+
+  const receipt = readClaimReceipt(result[2])
+  if (!receipt) {
     return { status: 'claim_unavailable', sessionId }
   }
 
   try {
     const work = JSON.parse(result[1]) as QueuedWork
-    return { status: 'claimed', sessionId: work.sessionId, workerId, work }
+    return {
+      status: 'claimed',
+      sessionId: work.sessionId,
+      workerId: receipt.workerId || workerId,
+      attemptToken: receipt.attemptToken,
+      claimedAt: receipt.claimedAt,
+      work,
+    }
   } catch (error) {
     log.error('Claim script returned invalid work JSON', {
       error,
@@ -352,6 +511,26 @@ function assertTombstoneInput(tombstone: WorkReconciliationTombstone): void {
   }
 }
 
+function assertAttemptToken(attemptToken: string): void {
+  if (!attemptToken.trim()) {
+    throw new Error('Work claim attempt token must be non-empty')
+  }
+}
+
+function rethrowCrossSlotError(error: unknown): void {
+  if (error instanceof Error && error.message.includes('CROSSSLOT')) {
+    throw error
+  }
+}
+
+function isLiveClaim(state: StoredWorkState, now = Date.now()): boolean {
+  return !!state.claim && state.claim.expiresAt > now
+}
+
+function isLiveTombstone(state: StoredWorkState, now = Date.now()): boolean {
+  return !!state.tombstone && state.tombstone.expiresAt > now
+}
+
 /**
  * Add work to the queue
  *
@@ -368,10 +547,27 @@ export async function queueWork(work: QueuedWork): Promise<boolean> {
     const score = calculateScore(work.priority, work.queuedAt)
     const serialized = JSON.stringify(work)
 
-    // Store work item in hash (O(1) lookup)
-    await redisHSet(WORK_ITEMS_KEY, work.sessionId, serialized)
+    // The per-session state record is the only claim/reconciliation authority.
+    // Queue/hash entries remain a non-authoritative scheduling index so this
+    // mutation uses exactly one hash-tagged Lua key in Redis Cluster.
+    const stateResult = asLuaTuple(
+      await redisEval(
+        ENQUEUE_WORK_SCRIPT,
+        [getWorkStateKey(work.sessionId)],
+        [serialized, Date.now()]
+      )
+    )
+    if (stateResult?.[0] !== 'queued') {
+      log.warn('Work queue rejected by durable state', {
+        sessionId: work.sessionId,
+        result: stateResult?.[0] ?? 'invalid',
+      })
+      return false
+    }
 
-    // Add to priority queue (O(log n))
+    // Preserve the legacy global scheduler index. It is never read by the Lua
+    // authority path, so cross-slot index cleanup cannot change claim truth.
+    await redisHSet(WORK_ITEMS_KEY, work.sessionId, serialized)
     await redisZAdd(WORK_QUEUE_KEY, score, work.sessionId)
 
     log.info('Work queued', {
@@ -383,6 +579,7 @@ export async function queueWork(work: QueuedWork): Promise<boolean> {
 
     return true
   } catch (error) {
+    rethrowCrossSlotError(error)
     log.error('Failed to queue work', { error, sessionId: work.sessionId })
     return false
   }
@@ -454,14 +651,17 @@ export async function getQueueLength(): Promise<number> {
 
 /**
  * Atomically claim one named work item, refusing if reconciliation has already
- * recorded a durable tombstone. The Lua transition owns every claim mutation:
- * tombstone read, claim SET NX EX, and queue/hash removal happen in one Redis
- * command, so a reconciliation and claim cannot both win.
+ * recorded a durable tombstone. The Lua transition owns the entire per-session
+ * authority record and retains the payload for same-token replay until delivery
+ * acknowledgement, so reconciliation and claim cannot both win.
  */
 export async function claimWorkWithReceipt(
   sessionId: string,
-  workerId: string
+  workerId: string,
+  attemptToken: string
 ): Promise<WorkClaimResult> {
+  assertAttemptToken(attemptToken)
+
   if (!isRedisConfigured()) {
     log.warn('Redis not configured, cannot claim work')
     return { status: 'claim_unavailable', sessionId }
@@ -471,13 +671,8 @@ export async function claimWorkWithReceipt(
     const result = decodeClaimResult(
       await redisEval(
         CLAIM_WORK_SCRIPT,
-        [
-          getWorkClaimKey(sessionId),
-          getWorkReconciliationTombstoneKey(sessionId),
-          WORK_ITEMS_KEY,
-          WORK_QUEUE_KEY,
-        ],
-        [workerId, WORK_CLAIM_TTL, sessionId]
+        [getWorkStateKey(sessionId)],
+        [attemptToken, workerId, WORK_CLAIM_TTL * 1000, Date.now()]
       ),
       workerId,
       sessionId
@@ -499,6 +694,7 @@ export async function claimWorkWithReceipt(
 
     return result
   } catch (error) {
+    rethrowCrossSlotError(error)
     log.error('Failed to claim work', { error, sessionId, workerId })
     return { status: 'claim_unavailable', sessionId }
   }
@@ -512,54 +708,65 @@ export async function claimWork(
   sessionId: string,
   workerId: string
 ): Promise<QueuedWork | null> {
-  const result = await claimWorkWithReceipt(sessionId, workerId)
+  const result = await claimWorkWithReceipt(sessionId, workerId, randomUUID())
   return result.status === 'claimed' ? result.work : null
 }
 
 /**
- * Atomically select, reconcile-check, and claim the highest-priority work item.
- * The script deliberately removes delayed stale queue artifacts on a tombstone
- * refusal so a reconciled item cannot pin the head of the poll queue forever.
+ * Select a priority-index candidate, then atomically reconcile-check and claim
+ * its colocated state. The global index is intentionally non-authoritative so
+ * its slot never participates in the claim Lua transition.
  */
 export async function popAndClaimWorkWithReceipt(
-  workerId: string
+  workerId: string,
+  attemptToken: string
 ): Promise<WorkClaimResult> {
+  assertAttemptToken(attemptToken)
+
   if (!isRedisConfigured()) {
     log.warn('Redis not configured, cannot pop work')
     return { status: 'claim_unavailable', sessionId: '' }
   }
 
   try {
-    const result = decodeClaimResult(
-      await redisEval(
-        POP_AND_CLAIM_WORK_SCRIPT,
-        [WORK_ITEMS_KEY, WORK_QUEUE_KEY],
-        [
+    // The priority index is deliberately non-authoritative so it can live in
+    // its own Redis Cluster slot. Each candidate's claim authority is one
+    // colocated state key, which is the only key passed to EVAL.
+    const sessionIds = await redisZRangeByScore(WORK_QUEUE_KEY, '-inf', '+inf', 10)
+    for (const sessionId of sessionIds) {
+      const result = await claimWorkWithReceipt(sessionId, workerId, attemptToken)
+      if (result.status === 'claimed') {
+        log.info('Work popped and claimed', {
+          sessionId: result.sessionId,
           workerId,
-          WORK_CLAIM_TTL,
-          WORK_CLAIM_PREFIX,
-          WORK_RECONCILIATION_TOMBSTONE_PREFIX,
-        ]
-      ),
-      workerId
-    )
-
-    if (result.status === 'claimed') {
-      log.info('Work popped and claimed', {
-        sessionId: result.sessionId,
-        workerId,
-        issueIdentifier: result.work.issueIdentifier,
-      })
-    } else if (result.status === 'claim_refused_reconciled') {
-      log.warn('Popped work claim refused by reconciliation', {
-        sessionId: result.sessionId,
-        workerId,
-        reconciliationGeneration: result.reconciliationGeneration,
-      })
+          issueIdentifier: result.work.issueIdentifier,
+        })
+        return result
+      }
+      if (result.status === 'claim_refused_reconciled') {
+        log.warn('Popped work claim refused by reconciliation', {
+          sessionId: result.sessionId,
+          workerId,
+          reconciliationGeneration: result.reconciliationGeneration,
+        })
+        // A tombstone is authoritative even if this best-effort index cleanup
+        // fails. Returning the typed refusal prevents accidental execution.
+        await redisZRem(WORK_QUEUE_KEY, sessionId)
+        await redisHDel(WORK_ITEMS_KEY, sessionId)
+        return result
+      }
+      if (result.status === 'claim_unavailable') {
+        // No durable payload remains (or it has been acknowledged), so clean
+        // only the stale scheduling index and inspect the next candidate.
+        await redisZRem(WORK_QUEUE_KEY, sessionId)
+        await redisHDel(WORK_ITEMS_KEY, sessionId)
+      }
+      // A live different-token claim retains its index until its claimant
+      // acknowledges delivery or expires; inspect a later candidate instead.
     }
-
-    return result
+    return { status: 'claim_unavailable', sessionId: '' }
   } catch (error) {
+    rethrowCrossSlotError(error)
     log.error('Failed to pop and claim work', { error, workerId })
     return { status: 'claim_unavailable', sessionId: '' }
   }
@@ -572,12 +779,12 @@ export async function popAndClaimWorkWithReceipt(
 export async function popAndClaimWork(
   workerId: string
 ): Promise<QueuedWork | null> {
-  const result = await popAndClaimWorkWithReceipt(workerId)
+  const result = await popAndClaimWorkWithReceipt(workerId, randomUUID())
   return result.status === 'claimed' ? result.work : null
 }
 
 /**
- * Atomically record a durable reconciliation tombstone and remove queued work.
+ * Atomically record a durable reconciliation tombstone in the colocated state.
  * If a worker claimed first, this returns its identity and does not write a
  * tombstone. If reconciliation wins, all later claim attempts return the typed
  * `claim_refused_reconciled` result until the caller-provided TTL expires.
@@ -592,29 +799,27 @@ export async function reconcileWork(
     return { status: 'reconcile_unavailable', sessionId }
   }
 
-  const serializedTombstone = JSON.stringify({ generation: tombstone.generation })
-
   try {
     const tuple = asLuaTuple(
       await redisEval(
         RECONCILE_WORK_SCRIPT,
-        [
-          getWorkClaimKey(sessionId),
-          getWorkReconciliationTombstoneKey(sessionId),
-          WORK_ITEMS_KEY,
-          WORK_QUEUE_KEY,
-        ],
-        [serializedTombstone, tombstone.ttlSeconds, sessionId]
+        [getWorkStateKey(sessionId)],
+        [tombstone.generation, tombstone.ttlSeconds * 1000, Date.now()]
       )
     )
     const existingGeneration = readTombstoneGeneration(tuple?.[1])
 
     if (tuple?.[0] === 'reconcile_tombstone_written' || tuple?.[0] === 'reconcile_tombstone_exists') {
-      return {
+      const result: WorkReconciliationReceipt = {
         status: tuple[0],
         sessionId,
         generation: existingGeneration,
       }
+      // Index cleanup is intentionally outside the colocated authority script.
+      // A failure leaves a stale index that returns the same typed tombstone.
+      await redisZRem(WORK_QUEUE_KEY, sessionId)
+      await redisHDel(WORK_ITEMS_KEY, sessionId)
+      return result
     }
     if (tuple?.[0] === 'reconcile_refused_claimed' && tuple[1]) {
       return { status: 'reconcile_refused_claimed', sessionId, workerId: tuple[1] }
@@ -625,8 +830,40 @@ export async function reconcileWork(
       generation: existingGeneration,
     }
   } catch (error) {
+    rethrowCrossSlotError(error)
     log.error('Failed to reconcile work', { error, sessionId })
     return { status: 'reconcile_unavailable', sessionId }
+  }
+}
+
+/**
+ * Mark a delivered claim only after the consumer has durably accepted its
+ * payload. The acknowledgement removes the payload from the authority record;
+ * same-token retries remain idempotent for one claim TTL.
+ */
+export async function acknowledgeWorkClaim(
+  sessionId: string,
+  attemptToken: string
+): Promise<boolean> {
+  assertAttemptToken(attemptToken)
+  if (!isRedisConfigured()) return false
+
+  try {
+    const tuple = asLuaTuple(
+      await redisEval(
+        ACKNOWLEDGE_CLAIM_SCRIPT,
+        [getWorkStateKey(sessionId)],
+        [attemptToken, Date.now(), WORK_CLAIM_TTL]
+      )
+    )
+    if (tuple?.[0] !== 'claim_delivery_acknowledged') return false
+    await redisZRem(WORK_QUEUE_KEY, sessionId)
+    await redisHDel(WORK_ITEMS_KEY, sessionId)
+    return true
+  } catch (error) {
+    rethrowCrossSlotError(error)
+    log.error('Failed to acknowledge work claim delivery', { error, sessionId })
+    return false
   }
 }
 
@@ -642,10 +879,10 @@ export async function releaseClaim(sessionId: string): Promise<boolean> {
   }
 
   try {
-    const claimKey = `${WORK_CLAIM_PREFIX}${sessionId}`
-    const deleted = await redisDel(claimKey)
-    return deleted > 0
+    const result = await redisEval(RELEASE_CLAIM_SCRIPT, [getWorkStateKey(sessionId)], [])
+    return result === 1
   } catch (error) {
+    rethrowCrossSlotError(error)
     log.error('Failed to release claim', { error, sessionId })
     return false
   }
@@ -663,8 +900,8 @@ export async function getClaimOwner(sessionId: string): Promise<string | null> {
   }
 
   try {
-    const claimKey = `${WORK_CLAIM_PREFIX}${sessionId}`
-    return await redisGet<string>(claimKey)
+    const state = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
+    return state && isLiveClaim(state) ? state.claim!.workerId : null
   } catch (error) {
     log.error('Failed to get claim owner', { error, sessionId })
     return null
@@ -673,7 +910,8 @@ export async function getClaimOwner(sessionId: string): Promise<string | null> {
 
 /**
  * Check if a session has an entry in the work queue.
- * O(1) check via the work items hash.
+ * The hash-tagged state record is authoritative; the global scheduler index
+ * may retain an acknowledged or reconciled stale entry until best-effort trim.
  *
  * @param sessionId - Session ID to check
  * @returns true if the session is present in the work queue
@@ -684,8 +922,8 @@ export async function isSessionInQueue(sessionId: string): Promise<boolean> {
   }
 
   try {
-    const item = await redisHGet(WORK_ITEMS_KEY, sessionId)
-    return item !== null
+    const state = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
+    return !!state?.work && !state.delivery && !isLiveClaim(state) && !isLiveTombstone(state)
   } catch (error) {
     log.error('Failed to check if session is in queue', { error, sessionId })
     return false
@@ -738,24 +976,21 @@ export async function getAllPendingWork(): Promise<QueuedWork[]> {
   }
 
   try {
-    // Get all session IDs from priority queue
+    // The global queue is only a priority index; read each colocated authority
+    // record before exposing pending work.
     const sessionIds = await redisZRangeByScore(WORK_QUEUE_KEY, '-inf', '+inf')
 
     if (sessionIds.length === 0) {
       return []
     }
 
-    // Batch fetch all work items
-    const items = await redisHMGet(WORK_ITEMS_KEY, sessionIds)
-
     const result: QueuedWork[] = []
-    for (const item of items) {
-      if (item) {
-        try {
-          result.push(JSON.parse(item) as QueuedWork)
-        } catch {
-          // Skip invalid items
-        }
+    const states = await Promise.all(
+      sessionIds.map(id => redisGet<StoredWorkState>(getWorkStateKey(id)))
+    )
+    for (const state of states) {
+      if (state?.work && !state.delivery && !isLiveClaim(state) && !isLiveTombstone(state)) {
+        result.push(state.work)
       }
     }
 
@@ -779,11 +1014,13 @@ export async function removeFromQueue(sessionId: string): Promise<boolean> {
   }
 
   try {
-    // Remove from both data structures
+    const removed = await redisEval(REMOVE_WORK_SCRIPT, [getWorkStateKey(sessionId)], [])
+    if (removed !== 1) return false
     await redisZRem(WORK_QUEUE_KEY, sessionId)
     await redisHDel(WORK_ITEMS_KEY, sessionId)
     return true
   } catch (error) {
+    rethrowCrossSlotError(error)
     log.error('Failed to remove from queue', { error, sessionId })
     return false
   }
@@ -820,10 +1057,10 @@ export async function migrateFromLegacyQueue(): Promise<{
       try {
         const work = JSON.parse(itemJson) as QueuedWork
 
-        // Add to new data structures
-        const score = calculateScore(work.priority, work.queuedAt)
-        await redisHSet(WORK_ITEMS_KEY, work.sessionId, itemJson)
-        await redisZAdd(WORK_QUEUE_KEY, score, work.sessionId)
+        if (!await queueWork(work)) {
+          failed++
+          continue
+        }
 
         // Remove from legacy list
         await redisLRem(WORK_QUEUE_KEY, 1, itemJson)
