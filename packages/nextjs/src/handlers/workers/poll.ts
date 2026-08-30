@@ -11,7 +11,6 @@ import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
   getWorker,
   popAndClaimWorkWithReceipt,
-  acknowledgeWorkClaim,
   queueWork,
   claimSession,
   addWorkerSession,
@@ -75,7 +74,6 @@ export function createWorkerPollHandler() {
         // one hash-tagged durable claim authority and replayable receipt.
         const maxAttempts = hasProjectFilter ? desiredCount * 4 : desiredCount
         const popped: QueuedWork[] = []
-        const attemptTokens = new Map<string, string>()
         const returned: QueuedWork[] = []
 
         for (let i = 0; i < maxAttempts && popped.length < desiredCount; i++) {
@@ -91,7 +89,6 @@ export function createWorkerPollHandler() {
           if (claimResult.status !== 'claimed') break // Queue is empty or unavailable
 
           const item = claimResult.work
-          attemptTokens.set(item.sessionId, claimResult.attemptToken)
 
           if (hasProjectFilter) {
             if (!item.projectName || !workerProjects!.includes(item.projectName)) {
@@ -158,13 +155,6 @@ export function createWorkerPollHandler() {
             }
 
             await addWorkerSession(workerId, item.sessionId)
-            const attemptToken = attemptTokens.get(item.sessionId)
-            if (!attemptToken || !await acknowledgeWorkClaim(item.sessionId, attemptToken)) {
-              log.warn('Claim delivery acknowledgement deferred', {
-                sessionId: item.sessionId,
-                workerId,
-              })
-            }
             claimedSessionIds.push(item.sessionId)
 
             onSessionClaimed(item.projectName, item.sessionId).catch((err) => {

@@ -4,6 +4,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('./redis.js', () => ({
   isRedisConfigured: vi.fn(() => true),
   redisGet: vi.fn(),
+  redisGetRaw: vi.fn(() => null),
+  redisTTL: vi.fn(() => -2),
+  redisSetNX: vi.fn(),
   redisDel: vi.fn(),
   redisEval: vi.fn(),
   redisExpire: vi.fn(),
@@ -225,6 +228,8 @@ describe('claimWork', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisGet.mockResolvedValue(null)
+    mockRedisHGet.mockResolvedValue(null)
   })
 
   it('returns null when Redis is not configured', async () => {
@@ -243,7 +248,9 @@ describe('claimWork', () => {
 
   it('returns work from one Redis Lua transition on successful claim', async () => {
     const work = makeWork({ sessionId: 'session-1' })
-    mockRedisEval.mockResolvedValue(claimedScriptReply(work))
+    mockRedisEval
+      .mockResolvedValueOnce(claimedScriptReply(work))
+      .mockResolvedValueOnce(['claim_delivery_acknowledged'])
 
     const result = await claimWork('session-1', 'worker-1')
 
@@ -253,9 +260,8 @@ describe('claimWork', () => {
       ['work:state:{session-1}'],
       [expect.any(String), 'worker-1', expect.any(Number), expect.any(Number)]
     )
-    expect(mockRedisHGet).not.toHaveBeenCalled()
-    expect(mockRedisZRem).not.toHaveBeenCalled()
-    expect(mockRedisHDel).not.toHaveBeenCalled()
+    expect(mockRedisZRem).toHaveBeenCalledWith('work:queue', 'session-1')
+    expect(mockRedisHDel).toHaveBeenCalledWith('work:items', 'session-1')
   })
 
   it('returns null through the legacy helper when reconciliation refuses a claim', async () => {
@@ -290,6 +296,8 @@ describe('claimWorkWithReceipt', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisGet.mockResolvedValue(null)
+    mockRedisHGet.mockResolvedValue(null)
   })
 
   it('returns typed claim_refused_reconciled without issuing split Redis commands', async () => {
@@ -304,7 +312,6 @@ describe('claimWorkWithReceipt', () => {
       reconciliationGeneration: 'generation-9',
     })
     expect(mockRedisEval).toHaveBeenCalledTimes(1)
-    expect(mockRedisHGet).not.toHaveBeenCalled()
     expect(mockRedisZRem).not.toHaveBeenCalled()
     expect(mockRedisHDel).not.toHaveBeenCalled()
   })
@@ -314,6 +321,8 @@ describe('reconcileWork', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisGet.mockResolvedValue(null)
+    mockRedisHGet.mockResolvedValue(null)
   })
 
   it('writes a caller-TTL tombstone in one atomic transition', async () => {
@@ -357,6 +366,8 @@ describe('releaseClaim', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisGet.mockResolvedValue(null)
+    mockRedisHGet.mockResolvedValue(null)
   })
 
   it('returns false when Redis is not configured', async () => {
@@ -372,7 +383,7 @@ describe('releaseClaim', () => {
 
     expect(result).toBe(true)
     expect(mockRedisEval).toHaveBeenCalledWith(
-      expect.stringContaining('state.claim = nil'),
+      expect.stringContaining("redis.call('DEL', KEYS[1])"),
       ['work:state:{session-1}'],
       []
     )
@@ -383,6 +394,8 @@ describe('getClaimOwner', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisGet.mockResolvedValue(null)
+    mockRedisHGet.mockResolvedValue(null)
   })
 
   it('returns null when Redis is not configured', async () => {
@@ -412,6 +425,8 @@ describe('isSessionInQueue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisGet.mockResolvedValue(null)
+    mockRedisHGet.mockResolvedValue(null)
   })
 
   it('returns false when Redis is not configured', async () => {
@@ -441,6 +456,8 @@ describe('requeueWork', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisGet.mockResolvedValue(null)
+    mockRedisHGet.mockResolvedValue(null)
   })
 
   it('re-queues with boosted priority', async () => {
@@ -467,7 +484,7 @@ describe('requeueWork', () => {
     await requeueWork(work)
 
     expect(mockRedisEval).toHaveBeenCalledWith(
-      expect.stringContaining('state.claim = nil'),
+      expect.stringContaining("redis.call('DEL', KEYS[1])"),
       ['work:state:{sess-requeue}'],
       []
     )
@@ -517,6 +534,8 @@ describe('popAndClaimWork', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisGet.mockResolvedValue(null)
+    mockRedisHGet.mockResolvedValue(null)
   })
 
   it('returns null when Redis is not configured', async () => {
@@ -534,7 +553,9 @@ describe('popAndClaimWork', () => {
   it('pops highest-priority item and claims it in one Redis Lua transition', async () => {
     const work = makeWork()
     mockRedisZRangeByScore.mockResolvedValue(['session-1'])
-    mockRedisEval.mockResolvedValue(claimedScriptReply(work))
+    mockRedisEval
+      .mockResolvedValueOnce(claimedScriptReply(work))
+      .mockResolvedValueOnce(['claim_delivery_acknowledged'])
 
     const result = await popAndClaimWork('worker-1')
 
@@ -572,6 +593,8 @@ describe('popAndClaimWorkWithReceipt', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsRedisConfigured.mockReturnValue(true)
+    mockRedisGet.mockResolvedValue(null)
+    mockRedisHGet.mockResolvedValue(null)
   })
 
   it('returns the reconciliation refusal with its selected session ID', async () => {

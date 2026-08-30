@@ -10,7 +10,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
   claimWorkWithReceipt,
-  acknowledgeWorkClaim,
   requeueWork,
   releaseClaim,
   claimSession,
@@ -126,6 +125,20 @@ export function createSessionClaimHandler() {
           }
 
           if (sessionState.status !== 'pending') {
+            if (
+              sessionState.status === 'claimed' &&
+              sessionState.workerId === workerId
+            ) {
+              // The first HTTP response may have been lost after the durable
+              // queue receipt and session claim committed. The same attempt
+              // replay returns its retained payload instead of false-negative
+              // failure, and the later `running` status performs cleanup.
+              return NextResponse.json({
+                claimed: true,
+                session: sessionState,
+                work,
+              })
+            }
             log.warn('Session not in pending status, dropping work item', {
               sessionId,
               workerId,
@@ -153,12 +166,6 @@ export function createSessionClaimHandler() {
         claimSucceeded = true
 
         await addWorkerSession(workerId, sessionId)
-        // The session claim and worker membership are durable delivery. Only
-        // after both succeed may this adapter acknowledge payload cleanup.
-        const acknowledged = await acknowledgeWorkClaim(sessionId, claimAttemptToken)
-        if (!acknowledged) {
-          log.warn('Claim delivery acknowledgement deferred', { sessionId, workerId })
-        }
 
         // Fleet quota: track concurrent session for this project
         onSessionClaimed(work.projectName, sessionId).catch((err) => {

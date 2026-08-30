@@ -12,6 +12,7 @@ import {
   updateSessionCostData,
   updateProviderSessionId,
   startSession,
+  acknowledgeWorkClaimForWorker,
   type AgentSessionStatus,
   removeWorkerSession,
   releaseClaim,
@@ -113,6 +114,14 @@ export function createSessionStatusPostHandler(config?: RouteConfig) {
             },
             { status: 409 }
           )
+        }
+
+        // A worker can only report `running` after receiving the work payload.
+        // This existing authenticated transition is the delivery boundary; the
+        // claim and poll HTTP responses remain replayable until this point.
+        const acknowledged = await acknowledgeWorkClaimForWorker(sessionId, workerId)
+        if (!acknowledged) {
+          log.warn('Work claim delivery acknowledgement deferred', { sessionId, workerId })
         }
 
         if (providerSessionId) {

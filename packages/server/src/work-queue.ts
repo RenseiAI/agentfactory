@@ -20,12 +20,16 @@ import { randomUUID } from 'node:crypto'
 
 import {
   redisGet,
+  redisGetRaw,
+  redisDel,
+  redisSetNX,
   redisEval,
   redisZAdd,
   redisZRem,
   redisZRangeByScore,
   redisZCard,
   redisHSet,
+  redisHGet,
   redisHDel,
   redisHMGet,
   isRedisConfigured,
@@ -33,6 +37,7 @@ import {
   redisLRange,
   redisLLen,
   redisLRem,
+  redisTTL,
 } from './redis.js'
 import type { AgentWorkType } from './types.js'
 import type { TenantEnvelope } from './jwt-envelope.js'
@@ -48,6 +53,9 @@ const log = {
 export const WORK_QUEUE_KEY = 'work:queue' // Sorted set: priority queue
 export const WORK_ITEMS_KEY = 'work:items' // Hash: sessionId -> work item
 export const WORK_STATE_PREFIX = 'work:state:'
+const LEGACY_WORK_CLAIM_PREFIX = 'work:claim:'
+const LEGACY_CLAIM_BRIDGE_PREFIX = 'bridge:'
+const LEGACY_RECONCILE_BARRIER_PREFIX = 'reconcile:'
 /** @deprecated Claim authority now lives in the colocated work-state record. */
 export const WORK_CLAIM_PREFIX = WORK_STATE_PREFIX
 /** @deprecated Reconciliation authority now lives in the colocated work-state record. */
@@ -174,6 +182,32 @@ redis.call('SET', KEYS[1], cjson.encode(state))
 return {'queued'}
 `
 
+const MATERIALIZE_LEGACY_WORK_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if raw then return {'state_exists'} end
+if ARGV[1] == '' then return {'legacy_missing'} end
+
+local decodedWork, work = pcall(cjson.decode, ARGV[1])
+if not decodedWork or type(work) ~= 'table' then return {'legacy_invalid'} end
+
+local state = { work = work, legacyIndex = true }
+local legacyWorkerId = ARGV[2]
+local legacyTtlMs = tonumber(ARGV[3])
+local now = tonumber(ARGV[4])
+if legacyWorkerId ~= '' and legacyTtlMs and legacyTtlMs > 0 and now then
+  state.claim = {
+    legacy = true,
+    attemptToken = '',
+    workerId = legacyWorkerId,
+    claimedAt = now,
+    expiresAt = now + legacyTtlMs,
+  }
+end
+
+redis.call('SET', KEYS[1], cjson.encode(state))
+return {'legacy_materialized'}
+`
+
 const CLAIM_WORK_SCRIPT = `
 local raw = redis.call('GET', KEYS[1])
 if not raw then return {'claim_unavailable'} end
@@ -195,6 +229,15 @@ if state.tombstone then
 end
 if state.delivery or not state.work then return {'claim_unavailable'} end
 
+if state.claim then
+  if state.claim.legacy then
+    local expiresAt = tonumber(state.claim.expiresAt)
+    if expiresAt and expiresAt > now then
+      return {'claim_in_progress', tostring(state.claim.workerId or '')}
+    end
+    state.claim = nil
+  end
+end
 if state.claim then
   if state.claim.attemptToken == attemptToken then
     if state.claim.workerId ~= workerId then
@@ -246,6 +289,14 @@ if state.tombstone then
   state.tombstone = nil
 end
 
+if state.delivery then
+  local expiresAt = tonumber(state.delivery.expiresAt)
+  if not expiresAt or expiresAt > now then
+    return {'reconcile_refused_claimed', tostring(state.delivery.workerId or '')}
+  end
+  state.delivery = nil
+end
+
 if state.claim then
   local expiresAt = tonumber(state.claim.expiresAt)
   if expiresAt and expiresAt > now then
@@ -264,13 +315,8 @@ local raw = redis.call('GET', KEYS[1])
 if not raw then return 0 end
 local decoded, state = pcall(cjson.decode, raw)
 if not decoded or type(state) ~= 'table' then return 0 end
-if not state.claim then return 0 end
-state.claim = nil
-if not state.work and not state.tombstone and not state.delivery then
-  redis.call('DEL', KEYS[1])
-else
-  redis.call('SET', KEYS[1], cjson.encode(state))
-end
+if not state.claim and not state.delivery then return 0 end
+redis.call('DEL', KEYS[1])
 return 1
 `
 
@@ -294,6 +340,35 @@ state.delivery = {
   attemptToken = attemptToken,
   workerId = state.claim.workerId,
   deliveredAt = now,
+  expiresAt = now + (ttlSeconds * 1000),
+}
+state.claim = nil
+state.work = nil
+redis.call('SETEX', KEYS[1], ttlSeconds, cjson.encode(state))
+return {'claim_delivery_acknowledged'}
+`
+
+const ACKNOWLEDGE_CLAIM_BY_WORKER_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return {'claim_delivery_unavailable'} end
+local decoded, state = pcall(cjson.decode, raw)
+if not decoded or type(state) ~= 'table' then return {'claim_delivery_unavailable'} end
+local workerId = ARGV[1]
+local now = tonumber(ARGV[2])
+local ttlSeconds = tonumber(ARGV[3])
+if not now or not ttlSeconds then return {'claim_delivery_unavailable'} end
+
+if state.delivery and state.delivery.workerId == workerId then
+  return {'claim_delivery_acknowledged'}
+end
+if not state.claim or state.claim.workerId ~= workerId then
+  return {'claim_delivery_unavailable'}
+end
+state.delivery = {
+  attemptToken = state.claim.attemptToken,
+  workerId = workerId,
+  deliveredAt = now,
+  expiresAt = now + (ttlSeconds * 1000),
 }
 state.claim = nil
 state.work = nil
@@ -364,6 +439,7 @@ export function calculateScore(priority: number, queuedAt: number): number {
 }
 
 interface StoredWorkClaim {
+  legacy?: boolean
   attemptToken: string
   workerId: string
   claimedAt: number
@@ -376,10 +452,16 @@ interface StoredWorkTombstone {
 }
 
 interface StoredWorkState {
+  legacyIndex?: boolean
   work?: QueuedWork
   claim?: StoredWorkClaim
   tombstone?: StoredWorkTombstone
-  delivery?: { attemptToken: string; workerId: string; deliveredAt: number }
+  delivery?: {
+    attemptToken: string
+    workerId: string
+    deliveredAt: number
+    expiresAt?: number
+  }
 }
 
 /**
@@ -399,6 +481,110 @@ export function getWorkClaimKey(sessionId: string): string {
 /** @deprecated Use getWorkStateKey; tombstones are fields in that record. */
 export function getWorkReconciliationTombstoneKey(sessionId: string): string {
   return getWorkStateKey(sessionId)
+}
+
+function getLegacyWorkClaimKey(sessionId: string): string {
+  return `${LEGACY_WORK_CLAIM_PREFIX}${sessionId}`
+}
+
+/**
+ * Materialize a pre-state-record queue entry without deleting its v0.9.14
+ * indexes. During a rolling upgrade, legacy workers still read those indexes,
+ * while upgraded claim paths read the colocated state record. A live legacy
+ * claim becomes a synthetic in-progress state claim until its original TTL.
+ */
+async function materializeLegacyWorkState(sessionId: string): Promise<boolean> {
+  const existing = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
+  if (existing) return true
+
+  const legacyClaimKey = getLegacyWorkClaimKey(sessionId)
+  const [legacyWork, legacyWorkerId, legacyTtlSeconds] = await Promise.all([
+    redisHGet(WORK_ITEMS_KEY, sessionId),
+    redisGetRaw(legacyClaimKey),
+    redisTTL(legacyClaimKey),
+  ])
+  if (!legacyWork) return false
+
+  const tuple = asLuaTuple(
+    await redisEval(
+      MATERIALIZE_LEGACY_WORK_SCRIPT,
+      [getWorkStateKey(sessionId)],
+      [
+        legacyWork,
+        legacyWorkerId ?? '',
+        Math.max(0, legacyTtlSeconds) * 1000,
+        Date.now(),
+      ]
+    )
+  )
+  return tuple?.[0] === 'legacy_materialized' || tuple?.[0] === 'state_exists'
+}
+
+function legacyClaimOwner(rawClaim: string): string {
+  if (rawClaim.startsWith(LEGACY_CLAIM_BRIDGE_PREFIX)) {
+    const [, workerId] = rawClaim.split(':', 3)
+    return workerId || rawClaim
+  }
+  return rawClaim
+}
+
+function legacyClaimBridgeValue(workerId: string, attemptToken: string): string {
+  return `${LEGACY_CLAIM_BRIDGE_PREFIX}${workerId}:${attemptToken}`
+}
+
+async function ensureLegacyClaimBridge(
+  sessionId: string,
+  workerId: string,
+  attemptToken: string
+): Promise<WorkClaimInProgress | null> {
+  const state = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
+  if (!state?.legacyIndex || state.claim || state.delivery || !state.work) return null
+
+  const legacyKey = getLegacyWorkClaimKey(sessionId)
+  const bridgeValue = legacyClaimBridgeValue(workerId, attemptToken)
+  let current = await redisGetRaw(legacyKey)
+  if (!current) {
+    const acquired = await redisSetNX(legacyKey, bridgeValue, WORK_CLAIM_TTL)
+    if (acquired) return null
+    current = await redisGetRaw(legacyKey)
+  }
+  if (current === bridgeValue) return null
+  return {
+    status: 'claim_in_progress',
+    sessionId,
+    workerId: current ? legacyClaimOwner(current) : null,
+  }
+}
+
+async function clearLegacyClaimBridge(sessionId: string, expected: string): Promise<void> {
+  const key = getLegacyWorkClaimKey(sessionId)
+  if (await redisGetRaw(key) === expected) {
+    await redisDel(key)
+  }
+}
+
+async function ensureLegacyReconcileBarrier(
+  sessionId: string,
+  generation: string,
+  ttlSeconds: number
+): Promise<WorkReconciliationRefusedClaimed | null> {
+  const state = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
+  if (!state?.legacyIndex || state.claim || state.delivery || !state.work) return null
+
+  const legacyKey = getLegacyWorkClaimKey(sessionId)
+  const barrierValue = `${LEGACY_RECONCILE_BARRIER_PREFIX}${generation}`
+  let current = await redisGetRaw(legacyKey)
+  if (!current) {
+    const acquired = await redisSetNX(legacyKey, barrierValue, ttlSeconds)
+    if (acquired) return null
+    current = await redisGetRaw(legacyKey)
+  }
+  if (current === barrierValue) return null
+  return {
+    status: 'reconcile_refused_claimed',
+    sessionId,
+    workerId: current ? legacyClaimOwner(current) : 'unknown',
+  }
 }
 
 function asLuaTuple(result: unknown): LuaTuple | null {
@@ -668,6 +854,9 @@ export async function claimWorkWithReceipt(
   }
 
   try {
+    await materializeLegacyWorkState(sessionId)
+    const legacyClaim = await ensureLegacyClaimBridge(sessionId, workerId, attemptToken)
+    if (legacyClaim) return legacyClaim
     const result = decodeClaimResult(
       await redisEval(
         CLAIM_WORK_SCRIPT,
@@ -692,6 +881,13 @@ export async function claimWorkWithReceipt(
       })
     }
 
+    if (result.status !== 'claimed') {
+      await clearLegacyClaimBridge(
+        sessionId,
+        legacyClaimBridgeValue(workerId, attemptToken)
+      )
+    }
+
     return result
   } catch (error) {
     rethrowCrossSlotError(error)
@@ -708,8 +904,14 @@ export async function claimWork(
   sessionId: string,
   workerId: string
 ): Promise<QueuedWork | null> {
-  const result = await claimWorkWithReceipt(sessionId, workerId, randomUUID())
-  return result.status === 'claimed' ? result.work : null
+  const attemptToken = randomUUID()
+  const result = await claimWorkWithReceipt(sessionId, workerId, attemptToken)
+  if (result.status !== 'claimed') return null
+
+  // The legacy nullable API has no replay token or follow-up acknowledgement
+  // surface. Preserve its historical single-delivery contract by finalizing
+  // the durable receipt before returning the payload to that caller.
+  return await acknowledgeWorkClaim(sessionId, attemptToken) ? result.work : null
 }
 
 /**
@@ -779,8 +981,10 @@ export async function popAndClaimWorkWithReceipt(
 export async function popAndClaimWork(
   workerId: string
 ): Promise<QueuedWork | null> {
-  const result = await popAndClaimWorkWithReceipt(workerId, randomUUID())
-  return result.status === 'claimed' ? result.work : null
+  const attemptToken = randomUUID()
+  const result = await popAndClaimWorkWithReceipt(workerId, attemptToken)
+  if (result.status !== 'claimed') return null
+  return await acknowledgeWorkClaim(result.sessionId, attemptToken) ? result.work : null
 }
 
 /**
@@ -800,6 +1004,13 @@ export async function reconcileWork(
   }
 
   try {
+    await materializeLegacyWorkState(sessionId)
+    const legacyClaim = await ensureLegacyReconcileBarrier(
+      sessionId,
+      tombstone.generation,
+      tombstone.ttlSeconds
+    )
+    if (legacyClaim) return legacyClaim
     const tuple = asLuaTuple(
       await redisEval(
         RECONCILE_WORK_SCRIPT,
@@ -822,8 +1033,16 @@ export async function reconcileWork(
       return result
     }
     if (tuple?.[0] === 'reconcile_refused_claimed' && tuple[1]) {
+      await clearLegacyClaimBridge(
+        sessionId,
+        `${LEGACY_RECONCILE_BARRIER_PREFIX}${tombstone.generation}`
+      )
       return { status: 'reconcile_refused_claimed', sessionId, workerId: tuple[1] }
     }
+    await clearLegacyClaimBridge(
+      sessionId,
+      `${LEGACY_RECONCILE_BARRIER_PREFIX}${tombstone.generation}`
+    )
     return {
       status: 'reconcile_generation_conflict',
       sessionId,
@@ -849,6 +1068,7 @@ export async function acknowledgeWorkClaim(
   if (!isRedisConfigured()) return false
 
   try {
+    await materializeLegacyWorkState(sessionId)
     const tuple = asLuaTuple(
       await redisEval(
         ACKNOWLEDGE_CLAIM_SCRIPT,
@@ -868,6 +1088,38 @@ export async function acknowledgeWorkClaim(
 }
 
 /**
+ * Acknowledge delivery at the existing worker `running` transition. The worker
+ * can only report that status after it received the payload, so this is safe
+ * for HTTP response replay without adding a new acknowledgement endpoint.
+ */
+export async function acknowledgeWorkClaimForWorker(
+  sessionId: string,
+  workerId: string
+): Promise<boolean> {
+  if (!workerId || !isRedisConfigured()) return false
+
+  try {
+    await materializeLegacyWorkState(sessionId)
+    const tuple = asLuaTuple(
+      await redisEval(
+        ACKNOWLEDGE_CLAIM_BY_WORKER_SCRIPT,
+        [getWorkStateKey(sessionId)],
+        [workerId, Date.now(), WORK_CLAIM_TTL]
+      )
+    )
+    if (tuple?.[0] !== 'claim_delivery_acknowledged') return false
+    await redisZRem(WORK_QUEUE_KEY, sessionId)
+    await redisHDel(WORK_ITEMS_KEY, sessionId)
+    await redisDel(getLegacyWorkClaimKey(sessionId))
+    return true
+  } catch (error) {
+    rethrowCrossSlotError(error)
+    log.error('Failed to acknowledge worker claim delivery', { error, sessionId, workerId })
+    return false
+  }
+}
+
+/**
  * Release a work claim (e.g., on failure or cancellation)
  *
  * @param sessionId - Session ID to release
@@ -879,8 +1131,13 @@ export async function releaseClaim(sessionId: string): Promise<boolean> {
   }
 
   try {
+    await materializeLegacyWorkState(sessionId)
     const result = await redisEval(RELEASE_CLAIM_SCRIPT, [getWorkStateKey(sessionId)], [])
-    return result === 1
+    if (result !== 1) return false
+    await redisZRem(WORK_QUEUE_KEY, sessionId)
+    await redisHDel(WORK_ITEMS_KEY, sessionId)
+    await redisDel(getLegacyWorkClaimKey(sessionId))
+    return true
   } catch (error) {
     rethrowCrossSlotError(error)
     log.error('Failed to release claim', { error, sessionId })
@@ -901,7 +1158,15 @@ export async function getClaimOwner(sessionId: string): Promise<string | null> {
 
   try {
     const state = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
-    return state && isLiveClaim(state) ? state.claim!.workerId : null
+    if (state && isLiveClaim(state)) return state.claim!.workerId
+    if (
+      state?.delivery &&
+      (state.delivery.expiresAt === undefined || state.delivery.expiresAt > Date.now())
+    ) {
+      return state.delivery.workerId
+    }
+    const legacyClaim = await redisGetRaw(getLegacyWorkClaimKey(sessionId))
+    return legacyClaim ? legacyClaimOwner(legacyClaim) : null
   } catch (error) {
     log.error('Failed to get claim owner', { error, sessionId })
     return null
@@ -923,7 +1188,10 @@ export async function isSessionInQueue(sessionId: string): Promise<boolean> {
 
   try {
     const state = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
-    return !!state?.work && !state.delivery && !isLiveClaim(state) && !isLiveTombstone(state)
+    if (state) {
+      return !!state.work && !state.delivery && !isLiveClaim(state) && !isLiveTombstone(state)
+    }
+    return (await redisHGet(WORK_ITEMS_KEY, sessionId)) !== null
   } catch (error) {
     log.error('Failed to check if session is in queue', { error, sessionId })
     return false
@@ -986,7 +1254,10 @@ export async function getAllPendingWork(): Promise<QueuedWork[]> {
 
     const result: QueuedWork[] = []
     const states = await Promise.all(
-      sessionIds.map(id => redisGet<StoredWorkState>(getWorkStateKey(id)))
+      sessionIds.map(async (id) => {
+        await materializeLegacyWorkState(id)
+        return redisGet<StoredWorkState>(getWorkStateKey(id))
+      })
     )
     for (const state of states) {
       if (state?.work && !state.delivery && !isLiveClaim(state) && !isLiveTombstone(state)) {

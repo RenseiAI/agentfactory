@@ -79,7 +79,13 @@ let claimWorkWithReceipt: (
   attemptToken: string,
 ) => Promise<WorkClaimResult>
 let getWorkStateKey: (sessionId: string) => string
-let getRedisClient: () => { del(...keys: string[]): Promise<number> }
+let workQueueKey: string
+let workItemsKey: string
+let getRedisClient: () => {
+  del(...keys: string[]): Promise<number>
+  zrem(key: string, member: string): Promise<number>
+  hdel(key: string, field: string): Promise<number>
+}
 let disconnectRedis: () => Promise<void>
 
 beforeAll(async () => {
@@ -91,6 +97,8 @@ beforeAll(async () => {
   queueWork = workQueue.queueWork
   claimWorkWithReceipt = workQueue.claimWorkWithReceipt as typeof claimWorkWithReceipt
   getWorkStateKey = workQueue.getWorkStateKey
+  workQueueKey = workQueue.WORK_QUEUE_KEY
+  workItemsKey = workQueue.WORK_ITEMS_KEY
   getRedisClient = redis.getRedisClient
   disconnectRedis = redis.disconnectRedis
 })
@@ -126,6 +134,9 @@ describe('work claim replay against a dropped Redis EVAL reply', () => {
     })
     expect(proxy.wasReplyDropped()).toBe(true)
 
-    await getRedisClient().del(getWorkStateKey(sessionId))
+    const redis = getRedisClient()
+    await redis.zrem(workQueueKey, sessionId)
+    await redis.hdel(workItemsKey, sessionId)
+    await redis.del(getWorkStateKey(sessionId))
   })
 })

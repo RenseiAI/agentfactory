@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   updateSessionCostData: vi.fn(),
   updateProviderSessionId: vi.fn(),
   startSession: vi.fn(),
+  acknowledgeWorkClaimForWorker: vi.fn(),
   removeWorkerSession: vi.fn(),
   releaseClaim: vi.fn(),
   markAgentWorked: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('@donmai/server', () => ({
   updateSessionCostData: mocks.updateSessionCostData,
   updateProviderSessionId: mocks.updateProviderSessionId,
   startSession: mocks.startSession,
+  acknowledgeWorkClaimForWorker: mocks.acknowledgeWorkClaimForWorker,
   removeWorkerSession: mocks.removeWorkerSession,
   releaseClaim: mocks.releaseClaim,
   markAgentWorked: mocks.markAgentWorked,
@@ -87,6 +89,7 @@ describe('session status running transition', () => {
       .mockResolvedValueOnce(session)
       .mockResolvedValue({ ...session, status: 'running' })
     mocks.startSession.mockResolvedValue(true)
+    mocks.acknowledgeWorkClaimForWorker.mockResolvedValue(true)
     mocks.updateSessionStatus.mockResolvedValue(true)
     mocks.updateProviderSessionId.mockResolvedValue(true)
     mocks.markAgentWorked.mockResolvedValue(true)
@@ -104,6 +107,10 @@ describe('session status running transition', () => {
       'session-1',
       'worker-1',
       '/stored/worktree'
+    )
+    expect(mocks.acknowledgeWorkClaimForWorker).toHaveBeenCalledWith(
+      'session-1',
+      'worker-1'
     )
     expect(mocks.updateSessionStatus).not.toHaveBeenCalledWith(
       'session-1',
@@ -134,6 +141,7 @@ describe('session status running transition', () => {
       'worker-1',
       '/reported/worktree'
     )
+    expect(mocks.acknowledgeWorkClaimForWorker).not.toHaveBeenCalled()
     expect(mocks.updateProviderSessionId).not.toHaveBeenCalled()
     expect(mocks.markAgentWorked).not.toHaveBeenCalled()
     expect(mocks.getSessionState).toHaveBeenCalledTimes(1)
