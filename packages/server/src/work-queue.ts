@@ -959,7 +959,8 @@ export async function claimWork(
  */
 export async function popAndClaimWorkWithReceipt(
   workerId: string,
-  attemptToken?: string
+  attemptToken?: string,
+  excludedSessionIds: readonly string[] = []
 ): Promise<WorkClaimResult> {
   if (attemptToken !== undefined) assertAttemptToken(attemptToken)
 
@@ -972,8 +973,13 @@ export async function popAndClaimWorkWithReceipt(
     // The priority index is deliberately non-authoritative so it can live in
     // its own Redis Cluster slot. Each candidate's claim authority is one
     // colocated state key, which is the only key passed to EVAL.
+    const excluded = new Set(excludedSessionIds)
     const sessionIds = await redisZRangeByScore(WORK_QUEUE_KEY, '-inf', '+inf', 10)
     for (const sessionId of sessionIds) {
+      // A poll route can be replaying an already-active receipt in parallel
+      // with new-work admission. Do not let that same receipt consume a new
+      // selection slot or hot-block lower-priority candidates.
+      if (excluded.has(sessionId)) continue
       const result = await claimWorkWithReceipt(
         sessionId,
         workerId,
@@ -1014,6 +1020,19 @@ export async function popAndClaimWorkWithReceipt(
     log.error('Failed to pop and claim work', { error, workerId })
     return { status: 'claim_unavailable', sessionId: '' }
   }
+}
+
+/**
+ * Replay an outstanding GET-poll receipt for one already-active worker
+ * session. This is deliberately separate from priority selection: callers
+ * use it before new-work capacity admission, so a zero-capacity retry can
+ * recover its own lost response without claiming another queue candidate.
+ */
+export async function replayPollWorkWithReceipt(
+  workerId: string,
+  sessionId: string
+): Promise<WorkClaimResult> {
+  return claimWorkWithReceipt(sessionId, workerId, pollAttemptToken(workerId, sessionId))
 }
 
 /**
