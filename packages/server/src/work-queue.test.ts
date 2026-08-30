@@ -3,16 +3,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Mock redis before importing module under test
 vi.mock('./redis.js', () => ({
   isRedisConfigured: vi.fn(() => true),
-  redisSetNX: vi.fn(),
   redisGet: vi.fn(),
   redisDel: vi.fn(),
+  redisEval: vi.fn(),
   redisExpire: vi.fn(),
   redisSet: vi.fn(),
   redisZAdd: vi.fn(),
   redisZRem: vi.fn(),
   redisZRangeByScore: vi.fn(() => []),
   redisZCard: vi.fn(() => 0),
-  redisZPopMin: vi.fn(),
   redisHSet: vi.fn(),
   redisHGet: vi.fn(),
   redisHDel: vi.fn(),
@@ -30,7 +29,10 @@ import {
   peekWork,
   getQueueLength,
   claimWork,
+  claimWorkWithReceipt,
   popAndClaimWork,
+  popAndClaimWorkWithReceipt,
+  reconcileWork,
   releaseClaim,
   getClaimOwner,
   isSessionInQueue,
@@ -40,14 +42,13 @@ import {
 import type { QueuedWork } from './work-queue.js'
 import {
   isRedisConfigured,
-  redisSetNX,
   redisGet,
   redisDel,
+  redisEval,
   redisZAdd,
   redisZRem,
   redisZRangeByScore,
   redisZCard,
-  redisZPopMin,
   redisHSet,
   redisHGet,
   redisHDel,
@@ -55,14 +56,13 @@ import {
 } from './redis.js'
 
 const mockIsRedisConfigured = vi.mocked(isRedisConfigured)
-const mockRedisSetNX = vi.mocked(redisSetNX)
 const mockRedisGet = vi.mocked(redisGet)
 const mockRedisDel = vi.mocked(redisDel)
+const mockRedisEval = vi.mocked(redisEval)
 const mockRedisZAdd = vi.mocked(redisZAdd)
 const mockRedisZRem = vi.mocked(redisZRem)
 const mockRedisZRangeByScore = vi.mocked(redisZRangeByScore)
 const mockRedisZCard = vi.mocked(redisZCard)
-const mockRedisZPopMin = vi.mocked(redisZPopMin)
 const mockRedisHSet = vi.mocked(redisHSet)
 const mockRedisHGet = vi.mocked(redisHGet)
 const mockRedisHDel = vi.mocked(redisHDel)
@@ -215,55 +215,125 @@ describe('claimWork', () => {
     expect(result).toBeNull()
   })
 
-  it('returns null when already claimed (SETNX returns false)', async () => {
-    mockRedisSetNX.mockResolvedValue(false)
+  it('returns null when the atomic claim script reports no available work', async () => {
+    mockRedisEval.mockResolvedValue(['claim_unavailable'])
 
     const result = await claimWork('session-1', 'worker-1')
 
     expect(result).toBeNull()
-    expect(mockRedisHGet).not.toHaveBeenCalled()
   })
 
-  it('returns work item and removes from queue on successful claim', async () => {
+  it('returns work from one Redis Lua transition on successful claim', async () => {
     const work = makeWork({ sessionId: 'session-1' })
-
-    mockRedisSetNX.mockResolvedValue(true)
-    mockRedisHGet.mockResolvedValue(JSON.stringify(work))
-    mockRedisZRem.mockResolvedValue(1)
-    mockRedisHDel.mockResolvedValue(1)
+    mockRedisEval.mockResolvedValue(['claimed', JSON.stringify(work)])
 
     const result = await claimWork('session-1', 'worker-1')
 
     expect(result).toEqual(work)
-    expect(mockRedisSetNX).toHaveBeenCalledWith(
-      'work:claim:session-1',
-      'worker-1',
-      expect.any(Number)
+    expect(mockRedisEval).toHaveBeenCalledWith(
+      expect.stringContaining("redis.call('GET', KEYS[2])"),
+      [
+        'work:claim:session-1',
+        'work:reconciliation:session-1',
+        'work:items',
+        'work:queue',
+      ],
+      ['worker-1', expect.any(Number), 'session-1']
     )
-    expect(mockRedisZRem).toHaveBeenCalledWith('work:queue', 'session-1')
-    expect(mockRedisHDel).toHaveBeenCalledWith('work:items', 'session-1')
+    expect(mockRedisHGet).not.toHaveBeenCalled()
+    expect(mockRedisZRem).not.toHaveBeenCalled()
+    expect(mockRedisHDel).not.toHaveBeenCalled()
   })
 
-  it('returns null when work item not found in hash', async () => {
-    mockRedisSetNX.mockResolvedValue(true)
-    mockRedisHGet.mockResolvedValue(null)
+  it('returns null through the legacy helper when reconciliation refuses a claim', async () => {
+    mockRedisEval.mockResolvedValue([
+      'claim_refused_reconciled',
+      JSON.stringify({ generation: 'generation-7' }),
+    ])
 
     const result = await claimWork('session-1', 'worker-1')
 
     expect(result).toBeNull()
-    // Should release the claim
-    expect(mockRedisDel).toHaveBeenCalledWith('work:claim:session-1')
   })
 
-  it('releases claim on error (cleanup behavior)', async () => {
-    mockRedisSetNX.mockResolvedValue(true)
-    mockRedisHGet.mockRejectedValue(new Error('Redis down'))
+  it('returns null when the atomic transition errors', async () => {
+    mockRedisEval.mockRejectedValue(new Error('Redis down'))
 
     const result = await claimWork('session-1', 'worker-1')
 
     expect(result).toBeNull()
-    // Should clean up the claim key to prevent deadlock
-    expect(mockRedisDel).toHaveBeenCalledWith('work:claim:session-1')
+  })
+})
+
+describe('claimWorkWithReceipt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsRedisConfigured.mockReturnValue(true)
+  })
+
+  it('returns typed claim_refused_reconciled without issuing split Redis commands', async () => {
+    mockRedisEval.mockResolvedValue([
+      'claim_refused_reconciled',
+      JSON.stringify({ generation: 'generation-9' }),
+    ])
+
+    await expect(claimWorkWithReceipt('session-9', 'worker-9')).resolves.toEqual({
+      status: 'claim_refused_reconciled',
+      sessionId: 'session-9',
+      reconciliationGeneration: 'generation-9',
+    })
+    expect(mockRedisEval).toHaveBeenCalledTimes(1)
+    expect(mockRedisHGet).not.toHaveBeenCalled()
+    expect(mockRedisZRem).not.toHaveBeenCalled()
+    expect(mockRedisHDel).not.toHaveBeenCalled()
+  })
+})
+
+describe('reconcileWork', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsRedisConfigured.mockReturnValue(true)
+  })
+
+  it('writes a caller-TTL tombstone in one atomic transition', async () => {
+    mockRedisEval.mockResolvedValue([
+      'reconcile_tombstone_written',
+      JSON.stringify({ generation: 'generation-11' }),
+    ])
+
+    await expect(
+      reconcileWork('session-11', { generation: 'generation-11', ttlSeconds: 7200 })
+    ).resolves.toEqual({
+      status: 'reconcile_tombstone_written',
+      sessionId: 'session-11',
+      generation: 'generation-11',
+    })
+    expect(mockRedisEval).toHaveBeenCalledWith(
+      expect.stringContaining("redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[2])"),
+      [
+        'work:claim:session-11',
+        'work:reconciliation:session-11',
+        'work:items',
+        'work:queue',
+      ],
+      [JSON.stringify({ generation: 'generation-11' }), 7200, 'session-11']
+    )
+  })
+
+  it('rejects an invalid TTL before calling Redis', async () => {
+    await expect(
+      reconcileWork('session-invalid', { generation: 'generation-12', ttlSeconds: 0 })
+    ).rejects.toThrow('positive whole number')
+    expect(mockRedisEval).not.toHaveBeenCalled()
+  })
+
+  it('returns a typed unavailable result when Redis is not configured', async () => {
+    mockIsRedisConfigured.mockReturnValue(false)
+
+    await expect(
+      reconcileWork('session-unavailable', { generation: 'generation-13', ttlSeconds: 300 })
+    ).resolves.toEqual({ status: 'reconcile_unavailable', sessionId: 'session-unavailable' })
+    expect(mockRedisEval).not.toHaveBeenCalled()
   })
 })
 
@@ -424,46 +494,63 @@ describe('popAndClaimWork', () => {
   })
 
   it('returns null when queue is empty', async () => {
-    mockRedisZPopMin.mockResolvedValue(null)
+    mockRedisEval.mockResolvedValue(['claim_unavailable'])
     const result = await popAndClaimWork('worker-1')
     expect(result).toBeNull()
-    expect(mockRedisHGet).not.toHaveBeenCalled()
   })
 
-  it('pops highest-priority item and claims it', async () => {
+  it('pops highest-priority item and claims it in one Redis Lua transition', async () => {
     const work = makeWork()
-    mockRedisZPopMin.mockResolvedValue({ member: 'session-1', score: 2e13 + 1000 })
-    mockRedisHGet.mockResolvedValue(JSON.stringify(work))
-    mockRedisHDel.mockResolvedValue(1)
-    mockRedisSetNX.mockResolvedValue(true)
+    mockRedisEval.mockResolvedValue(['claimed', JSON.stringify(work), 'session-1'])
 
     const result = await popAndClaimWork('worker-1')
 
     expect(result).toEqual(work)
-    // Verifies ZPOPMIN was called on the queue
-    expect(mockRedisZPopMin).toHaveBeenCalledWith('work:queue')
-    // Verifies item was removed from hash
-    expect(mockRedisHDel).toHaveBeenCalledWith('work:items', 'session-1')
-    // Verifies claim key was set
-    expect(mockRedisSetNX).toHaveBeenCalledWith('work:claim:session-1', 'worker-1', expect.any(Number))
+    expect(mockRedisEval).toHaveBeenCalledWith(
+      expect.stringContaining("redis.call('ZRANGE', KEYS[2], 0, 0)"),
+      ['work:items', 'work:queue'],
+      ['worker-1', expect.any(Number), 'work:claim:', 'work:reconciliation:']
+    )
   })
 
-  it('returns null when item not in hash after pop', async () => {
-    mockRedisZPopMin.mockResolvedValue({ member: 'session-1', score: 2e13 })
-    mockRedisHGet.mockResolvedValue(null)
+  it('returns null when a popped item is refused by reconciliation', async () => {
+    mockRedisEval.mockResolvedValue([
+      'claim_refused_reconciled',
+      JSON.stringify({ generation: 'generation-13' }),
+      'session-13',
+    ])
 
     const result = await popAndClaimWork('worker-1')
 
     expect(result).toBeNull()
-    // Should not try to set claim or delete hash entry
-    expect(mockRedisSetNX).not.toHaveBeenCalled()
   })
 
   it('returns null on error', async () => {
-    mockRedisZPopMin.mockRejectedValue(new Error('Redis down'))
+    mockRedisEval.mockRejectedValue(new Error('Redis down'))
 
     const result = await popAndClaimWork('worker-1')
 
     expect(result).toBeNull()
+  })
+})
+
+describe('popAndClaimWorkWithReceipt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsRedisConfigured.mockReturnValue(true)
+  })
+
+  it('returns the reconciliation refusal with its selected session ID', async () => {
+    mockRedisEval.mockResolvedValue([
+      'claim_refused_reconciled',
+      JSON.stringify({ generation: 'generation-14' }),
+      'session-14',
+    ])
+
+    await expect(popAndClaimWorkWithReceipt('worker-14')).resolves.toEqual({
+      status: 'claim_refused_reconciled',
+      sessionId: 'session-14',
+      reconciliationGeneration: 'generation-14',
+    })
   })
 })

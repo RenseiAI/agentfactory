@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
-  claimWork,
+  claimWorkWithReceipt,
   requeueWork,
   releaseClaim,
   claimSession,
@@ -43,15 +43,33 @@ export function createSessionClaimHandler() {
         )
       }
 
-      const work = await claimWork(sessionId, workerId)
+      const claimResult = await claimWorkWithReceipt(sessionId, workerId)
 
-      if (!work) {
+      if (claimResult.status === 'claim_refused_reconciled') {
+        log.warn('Claim refused by durable reconciliation tombstone', {
+          sessionId,
+          workerId,
+          reconciliationGeneration: claimResult.reconciliationGeneration,
+        })
+        return NextResponse.json(
+          {
+            claimed: false,
+            reason: 'claim_refused_reconciled',
+            reconciliationGeneration: claimResult.reconciliationGeneration,
+          },
+          { status: 409 }
+        )
+      }
+
+      if (claimResult.status !== 'claimed') {
         log.debug('Failed to claim work from queue', { sessionId, workerId })
         return NextResponse.json({
           claimed: false,
           reason: 'Work item not available or already claimed',
         })
       }
+
+      const work = claimResult.work
 
       // Validate project routing: reject if the worker's project list
       // doesn't include this work item's project. Prevents cross-repo

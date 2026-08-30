@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
   getWorker,
-  popAndClaimWork,
+  popAndClaimWorkWithReceipt,
   queueWork,
   claimSession,
   addWorkerSession,
@@ -77,8 +77,18 @@ export function createWorkerPollHandler() {
         const returned: QueuedWork[] = []
 
         for (let i = 0; i < maxAttempts && popped.length < desiredCount; i++) {
-          const item = await popAndClaimWork(workerId)
-          if (!item) break // Queue is empty
+          const claimResult = await popAndClaimWorkWithReceipt(workerId)
+          if (claimResult.status === 'claim_refused_reconciled') {
+            log.warn('Poll skipped work refused by durable reconciliation tombstone', {
+              workerId,
+              sessionId: claimResult.sessionId,
+              reconciliationGeneration: claimResult.reconciliationGeneration,
+            })
+            continue
+          }
+          if (claimResult.status !== 'claimed') break // Queue is empty or unavailable
+
+          const item = claimResult.work
 
           if (hasProjectFilter) {
             if (!item.projectName || !workerProjects!.includes(item.projectName)) {
