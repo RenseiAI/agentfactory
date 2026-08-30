@@ -6,7 +6,7 @@ vi.mock('./redis.js', () => ({
   redisGet: vi.fn(),
   redisGetRaw: vi.fn(() => null),
   redisTTL: vi.fn(() => -2),
-  redisSetNX: vi.fn(),
+  redisSetNX: vi.fn(() => true),
   redisDel: vi.fn(),
   redisEval: vi.fn(),
   redisExpire: vi.fn(),

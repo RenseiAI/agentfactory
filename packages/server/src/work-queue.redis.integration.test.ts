@@ -138,9 +138,47 @@ describe('work queue reconciliation fence against real Redis', () => {
     ).resolves.toEqual({ status: 'claim_unavailable', sessionId: '' })
 
     await expect(redis.get(`work:claim:${id}`)).resolves.toBe('worker-v0914')
+    await expect(getClaimOwner(id)).resolves.toBe('worker-v0914')
     await expect(redis.zscore(WORK_QUEUE_KEY, id)).resolves.not.toBeNull()
     await expect(redis.hget(WORK_ITEMS_KEY, id)).resolves.toBe(JSON.stringify(work))
-    await expect(redis.get(getWorkStateKey(id))).resolves.toMatch(/"workerId":"worker-v0914"/)
+    await expect(redis.get(getWorkStateKey(id))).resolves.toBeNull()
+  })
+
+  it('honors a v0.9.14 claim-only owner after legacy H/Z removal', async () => {
+    const id = sessionId('legacy-claim-only')
+    await redis.set(`work:claim:${id}`, 'worker-v0914-only', 'EX', 300)
+
+    await expect(redis.zscore(WORK_QUEUE_KEY, id)).resolves.toBeNull()
+    await expect(redis.hget(WORK_ITEMS_KEY, id)).resolves.toBeNull()
+    await expect(redis.get(getWorkStateKey(id))).resolves.toBeNull()
+    await expect(getClaimOwner(id)).resolves.toBe('worker-v0914-only')
+    await expect(
+      reconcileWork(id, { generation: 'generation-legacy-only', ttlSeconds: 300 })
+    ).resolves.toEqual({
+      status: 'reconcile_refused_claimed',
+      sessionId: id,
+      workerId: 'worker-v0914-only',
+    })
+    await expect(redis.get(getWorkStateKey(id))).resolves.toBeNull()
+  })
+
+  it('makes an old-first SETNX win against a newly queued state record', async () => {
+    const id = sessionId('new-state-old-first')
+    const work = makeWork(id)
+    await expect(queueWork(work)).resolves.toBe(true)
+    await expect(
+      redis.set(`work:claim:${id}`, 'worker-v0914-first', 'EX', 300, 'NX')
+    ).resolves.toBe('OK')
+
+    await expect(
+      claimWorkWithReceipt(id, 'worker-new', 'attempt-new')
+    ).resolves.toEqual({
+      status: 'claim_in_progress',
+      sessionId: id,
+      workerId: 'worker-v0914-first',
+    })
+    await expect(redis.zscore(WORK_QUEUE_KEY, id)).resolves.not.toBeNull()
+    await expect(redis.hget(WORK_ITEMS_KEY, id)).resolves.toBe(JSON.stringify(work))
   })
 
   it('keeps legacy claimWork single-delivery after terminal release', async () => {
@@ -153,6 +191,27 @@ describe('work queue reconciliation fence against real Redis', () => {
     await expect(releaseClaim(id)).resolves.toBe(true)
     await expect(claimWork(id, 'worker-two')).resolves.toBeNull()
     await expectQueueArtifactsRemoved(id)
+  })
+
+  it('replays a dropped poll response to the same worker without a request token', async () => {
+    const id = sessionId('poll-replay')
+    const work = makeWork(id)
+    await expect(queueWork(work)).resolves.toBe(true)
+
+    // The first receipt represents a poll HTTP response that was lost.
+    const first = await popAndClaimWorkWithReceipt('worker-poll')
+    expect(first).toMatchObject({
+      status: 'claimed',
+      workerId: 'worker-poll',
+      attemptToken: `poll:worker-poll:${id}`,
+      work,
+    })
+
+    await expect(popAndClaimWorkWithReceipt('worker-poll')).resolves.toEqual(first)
+    await expect(popAndClaimWorkWithReceipt('worker-other')).resolves.toEqual({
+      status: 'claim_unavailable',
+      sessionId: '',
+    })
   })
 
   it('uses one hash-tagged authority slot for claim and reconciliation state', () => {

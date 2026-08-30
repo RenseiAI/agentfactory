@@ -5,7 +5,6 @@
  * Reads from agent inbox streams (urgent-first) instead of pending-prompts Lists.
  */
 
-import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
@@ -77,7 +76,7 @@ export function createWorkerPollHandler() {
         const returned: QueuedWork[] = []
 
         for (let i = 0; i < maxAttempts && popped.length < desiredCount; i++) {
-          const claimResult = await popAndClaimWorkWithReceipt(workerId, randomUUID())
+          const claimResult = await popAndClaimWorkWithReceipt(workerId)
           if (claimResult.status === 'claim_refused_reconciled') {
             log.warn('Poll skipped work refused by durable reconciliation tombstone', {
               workerId,
@@ -141,6 +140,16 @@ export function createWorkerPollHandler() {
             const claimed = await claimSession(item.sessionId, workerId)
             if (!claimed) {
               const session = await getSessionState(item.sessionId)
+              if (
+                session?.status === 'claimed' &&
+                session.workerId === workerId
+              ) {
+                // The first poll response may have been lost after its durable
+                // claim committed. The server-derived token replays the same
+                // payload to this worker; do not release it as unavailable.
+                claimedSessionIds.push(item.sessionId)
+                continue
+              }
               if (!session || session.status !== 'pending') {
                 log.warn('Session not claimable, dropping', {
                   sessionId: item.sessionId,

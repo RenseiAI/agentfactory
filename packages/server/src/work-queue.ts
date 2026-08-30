@@ -194,7 +194,10 @@ local state = { work = work, legacyIndex = true }
 local legacyWorkerId = ARGV[2]
 local legacyTtlMs = tonumber(ARGV[3])
 local now = tonumber(ARGV[4])
-if legacyWorkerId ~= '' and legacyTtlMs and legacyTtlMs > 0 and now then
+if legacyWorkerId ~= '' and
+  string.sub(legacyWorkerId, 1, 7) ~= 'bridge:' and
+  string.sub(legacyWorkerId, 1, 10) ~= 'reconcile:' and
+  legacyTtlMs and legacyTtlMs > 0 and now then
   state.claim = {
     legacy = true,
     attemptToken = '',
@@ -532,27 +535,38 @@ function legacyClaimBridgeValue(workerId: string, attemptToken: string): string 
   return `${LEGACY_CLAIM_BRIDGE_PREFIX}${workerId}:${attemptToken}`
 }
 
-async function ensureLegacyClaimBridge(
+interface CompatibleBarrierResult {
+  barrierValue?: string
+  inProgress?: WorkClaimInProgress
+  reconciliationGeneration?: string
+}
+
+async function acquireCompatibleClaimBarrier(
   sessionId: string,
   workerId: string,
-  attemptToken: string
-): Promise<WorkClaimInProgress | null> {
-  const state = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
-  if (!state?.legacyIndex || state.claim || state.delivery || !state.work) return null
-
+  attemptToken: string,
+  ttlSeconds: number = WORK_CLAIM_TTL
+): Promise<CompatibleBarrierResult> {
   const legacyKey = getLegacyWorkClaimKey(sessionId)
   const bridgeValue = legacyClaimBridgeValue(workerId, attemptToken)
   let current = await redisGetRaw(legacyKey)
   if (!current) {
-    const acquired = await redisSetNX(legacyKey, bridgeValue, WORK_CLAIM_TTL)
-    if (acquired) return null
+    const acquired = await redisSetNX(legacyKey, bridgeValue, ttlSeconds)
+    if (acquired) return { barrierValue: bridgeValue }
     current = await redisGetRaw(legacyKey)
   }
-  if (current === bridgeValue) return null
+  if (current === bridgeValue) return { barrierValue: bridgeValue }
+  if (current?.startsWith(LEGACY_RECONCILE_BARRIER_PREFIX)) {
+    return {
+      reconciliationGeneration: current.slice(LEGACY_RECONCILE_BARRIER_PREFIX.length),
+    }
+  }
   return {
-    status: 'claim_in_progress',
-    sessionId,
-    workerId: current ? legacyClaimOwner(current) : null,
+    inProgress: {
+      status: 'claim_in_progress',
+      sessionId,
+      workerId: current ? legacyClaimOwner(current) : null,
+    },
   }
 }
 
@@ -563,27 +577,26 @@ async function clearLegacyClaimBridge(sessionId: string, expected: string): Prom
   }
 }
 
-async function ensureLegacyReconcileBarrier(
+async function acquireCompatibleReconcileBarrier(
   sessionId: string,
   generation: string,
   ttlSeconds: number
-): Promise<WorkReconciliationRefusedClaimed | null> {
-  const state = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
-  if (!state?.legacyIndex || state.claim || state.delivery || !state.work) return null
-
+): Promise<{ barrierValue?: string; refused?: WorkReconciliationRefusedClaimed }> {
   const legacyKey = getLegacyWorkClaimKey(sessionId)
   const barrierValue = `${LEGACY_RECONCILE_BARRIER_PREFIX}${generation}`
   let current = await redisGetRaw(legacyKey)
   if (!current) {
     const acquired = await redisSetNX(legacyKey, barrierValue, ttlSeconds)
-    if (acquired) return null
+    if (acquired) return { barrierValue }
     current = await redisGetRaw(legacyKey)
   }
-  if (current === barrierValue) return null
+  if (current === barrierValue) return { barrierValue }
   return {
-    status: 'reconcile_refused_claimed',
-    sessionId,
-    workerId: current ? legacyClaimOwner(current) : 'unknown',
+    refused: {
+      status: 'reconcile_refused_claimed',
+      sessionId,
+      workerId: current ? legacyClaimOwner(current) : 'unknown',
+    },
   }
 }
 
@@ -701,6 +714,12 @@ function assertAttemptToken(attemptToken: string): void {
   if (!attemptToken.trim()) {
     throw new Error('Work claim attempt token must be non-empty')
   }
+}
+
+function pollAttemptToken(workerId: string, sessionId: string): string {
+  // Backward-compatible retry identity for GET poll: the worker need not know
+  // a token that was lost with the first HTTP response.
+  return `poll:${workerId}:${sessionId}`
 }
 
 function rethrowCrossSlotError(error: unknown): void {
@@ -854,9 +873,28 @@ export async function claimWorkWithReceipt(
   }
 
   try {
+    const stateBeforeClaim = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
+    const hasLiveDelivery = Boolean(
+      stateBeforeClaim?.delivery &&
+      (stateBeforeClaim.delivery.expiresAt === undefined ||
+        stateBeforeClaim.delivery.expiresAt > Date.now())
+    )
+    const needsCompatibleBarrier =
+      !stateBeforeClaim ||
+      (!isLiveClaim(stateBeforeClaim) && !isLiveTombstone(stateBeforeClaim) && !hasLiveDelivery)
+    const barrier = needsCompatibleBarrier
+      ? await acquireCompatibleClaimBarrier(sessionId, workerId, attemptToken)
+      : {}
+    if (barrier.inProgress) return barrier.inProgress
+    if (barrier.reconciliationGeneration !== undefined) {
+      return {
+        status: 'claim_refused_reconciled',
+        sessionId,
+        reconciliationGeneration: barrier.reconciliationGeneration || null,
+      }
+    }
+
     await materializeLegacyWorkState(sessionId)
-    const legacyClaim = await ensureLegacyClaimBridge(sessionId, workerId, attemptToken)
-    if (legacyClaim) return legacyClaim
     const result = decodeClaimResult(
       await redisEval(
         CLAIM_WORK_SCRIPT,
@@ -881,10 +919,10 @@ export async function claimWorkWithReceipt(
       })
     }
 
-    if (result.status !== 'claimed') {
+    if (result.status !== 'claimed' && barrier.barrierValue) {
       await clearLegacyClaimBridge(
         sessionId,
-        legacyClaimBridgeValue(workerId, attemptToken)
+        barrier.barrierValue
       )
     }
 
@@ -921,9 +959,9 @@ export async function claimWork(
  */
 export async function popAndClaimWorkWithReceipt(
   workerId: string,
-  attemptToken: string
+  attemptToken?: string
 ): Promise<WorkClaimResult> {
-  assertAttemptToken(attemptToken)
+  if (attemptToken !== undefined) assertAttemptToken(attemptToken)
 
   if (!isRedisConfigured()) {
     log.warn('Redis not configured, cannot pop work')
@@ -936,7 +974,11 @@ export async function popAndClaimWorkWithReceipt(
     // colocated state key, which is the only key passed to EVAL.
     const sessionIds = await redisZRangeByScore(WORK_QUEUE_KEY, '-inf', '+inf', 10)
     for (const sessionId of sessionIds) {
-      const result = await claimWorkWithReceipt(sessionId, workerId, attemptToken)
+      const result = await claimWorkWithReceipt(
+        sessionId,
+        workerId,
+        attemptToken ?? pollAttemptToken(workerId, sessionId)
+      )
       if (result.status === 'claimed') {
         log.info('Work popped and claimed', {
           sessionId: result.sessionId,
@@ -1004,13 +1046,27 @@ export async function reconcileWork(
   }
 
   try {
-    await materializeLegacyWorkState(sessionId)
-    const legacyClaim = await ensureLegacyReconcileBarrier(
-      sessionId,
-      tombstone.generation,
-      tombstone.ttlSeconds
+    const stateBeforeReconcile = await redisGet<StoredWorkState>(getWorkStateKey(sessionId))
+    const hasLiveDelivery = Boolean(
+      stateBeforeReconcile?.delivery &&
+      (stateBeforeReconcile.delivery.expiresAt === undefined ||
+        stateBeforeReconcile.delivery.expiresAt > Date.now())
     )
-    if (legacyClaim) return legacyClaim
+    const needsCompatibleBarrier =
+      !stateBeforeReconcile ||
+      (!isLiveClaim(stateBeforeReconcile) &&
+        !isLiveTombstone(stateBeforeReconcile) &&
+        !hasLiveDelivery)
+    const barrier = needsCompatibleBarrier
+      ? await acquireCompatibleReconcileBarrier(
+          sessionId,
+          tombstone.generation,
+          tombstone.ttlSeconds
+        )
+      : {}
+    if (barrier.refused) return barrier.refused
+
+    await materializeLegacyWorkState(sessionId)
     const tuple = asLuaTuple(
       await redisEval(
         RECONCILE_WORK_SCRIPT,
@@ -1033,16 +1089,10 @@ export async function reconcileWork(
       return result
     }
     if (tuple?.[0] === 'reconcile_refused_claimed' && tuple[1]) {
-      await clearLegacyClaimBridge(
-        sessionId,
-        `${LEGACY_RECONCILE_BARRIER_PREFIX}${tombstone.generation}`
-      )
+      if (barrier.barrierValue) await clearLegacyClaimBridge(sessionId, barrier.barrierValue)
       return { status: 'reconcile_refused_claimed', sessionId, workerId: tuple[1] }
     }
-    await clearLegacyClaimBridge(
-      sessionId,
-      `${LEGACY_RECONCILE_BARRIER_PREFIX}${tombstone.generation}`
-    )
+    if (barrier.barrierValue) await clearLegacyClaimBridge(sessionId, barrier.barrierValue)
     return {
       status: 'reconcile_generation_conflict',
       sessionId,
@@ -1079,6 +1129,7 @@ export async function acknowledgeWorkClaim(
     if (tuple?.[0] !== 'claim_delivery_acknowledged') return false
     await redisZRem(WORK_QUEUE_KEY, sessionId)
     await redisHDel(WORK_ITEMS_KEY, sessionId)
+    await redisDel(getLegacyWorkClaimKey(sessionId))
     return true
   } catch (error) {
     rethrowCrossSlotError(error)
