@@ -5,6 +5,7 @@
  * Uses atomic operations to prevent race conditions.
  */
 
+import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
@@ -35,21 +36,25 @@ export function createSessionClaimHandler() {
 
     try {
       const body = await request.json()
-      const { workerId, attemptToken } = body as { workerId: string; attemptToken: string }
+      const { workerId, attemptToken } = body as {
+        workerId: string
+        attemptToken?: string
+      }
 
-      if (
-        !workerId ||
-        typeof workerId !== 'string' ||
-        !attemptToken ||
-        typeof attemptToken !== 'string'
-      ) {
+      if (!workerId || typeof workerId !== 'string') {
         return NextResponse.json(
-          { error: 'Bad Request', message: 'workerId and attemptToken are required' },
+          { error: 'Bad Request', message: 'workerId is required' },
           { status: 400 }
         )
       }
 
-      const claimResult = await claimWorkWithReceipt(sessionId, workerId, attemptToken)
+      // Callers that retry this endpoint pass a stable token; retain the
+      // legacy request shape by generating one for one-shot callers.
+      const claimAttemptToken =
+        typeof attemptToken === 'string' && attemptToken.trim()
+          ? attemptToken
+          : randomUUID()
+      const claimResult = await claimWorkWithReceipt(sessionId, workerId, claimAttemptToken)
 
       if (claimResult.status === 'claim_refused_reconciled') {
         log.warn('Claim refused by durable reconciliation tombstone', {
@@ -148,11 +153,9 @@ export function createSessionClaimHandler() {
         claimSucceeded = true
 
         await addWorkerSession(workerId, sessionId)
-
-        // Session ownership is now durable, so the queue payload may cross its
-        // explicit delivery boundary. A failed acknowledgement is retained for
-        // same-token retry rather than turning this completed claim into loss.
-        const acknowledged = await acknowledgeWorkClaim(sessionId, attemptToken)
+        // The session claim and worker membership are durable delivery. Only
+        // after both succeed may this adapter acknowledge payload cleanup.
+        const acknowledged = await acknowledgeWorkClaim(sessionId, claimAttemptToken)
         if (!acknowledged) {
           log.warn('Claim delivery acknowledgement deferred', { sessionId, workerId })
         }
