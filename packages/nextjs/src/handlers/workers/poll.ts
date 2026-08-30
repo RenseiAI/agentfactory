@@ -9,7 +9,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
   getWorker,
-  popAndClaimWork,
+  popAndClaimWorkWithReceipt,
+  replayPollWorkWithReceipt,
   queueWork,
   claimSession,
   addWorkerSession,
@@ -30,6 +31,38 @@ const log = createLogger('api:workers:poll')
 async function returnToQueue(item: QueuedWork): Promise<void> {
   await releaseClaim(item.sessionId)
   await queueWork(item)
+}
+
+/**
+ * A poll response can be lost after claim/session binding commits. Replay only
+ * receipts for sessions this worker already owns; this is recovery, not a new
+ * capacity admission. A terminal or released session is intentionally not
+ * replayed even if a stale active-session member remains.
+ */
+async function replayOutstandingPollWork(
+  workerId: string,
+  activeSessions: string[]
+): Promise<QueuedWork[]> {
+  const replayed: QueuedWork[] = []
+
+  for (const sessionId of activeSessions) {
+    const beforeReplay = await getSessionState(sessionId)
+    if (beforeReplay?.status !== 'claimed' || beforeReplay.workerId !== workerId) {
+      continue
+    }
+
+    const claimResult = await replayPollWorkWithReceipt(workerId, sessionId)
+    if (claimResult.status !== 'claimed') continue
+
+    // Re-check after receipt recovery: a concurrent terminal/release transition
+    // must win over response replay.
+    const afterReplay = await getSessionState(sessionId)
+    if (afterReplay?.status !== 'claimed' || afterReplay.workerId !== workerId) continue
+
+    replayed.push(claimResult.work)
+  }
+
+  return replayed
 }
 
 interface RouteParams {
@@ -59,8 +92,15 @@ export function createWorkerPollHandler() {
       // Use activeSessions.length (authoritative Redis set) instead of
       // activeCount (heartbeat-reported, can be stale after re-registration)
       const availableCapacity = worker.capacity - worker.activeSessions.length
-      let work: QueuedWork[] = []
-      const claimedSessionIds: string[] = []
+      // Recovery intentionally precedes capacity admission. The active-set
+      // entry is created with the original claim, so its receipt does not
+      // consume new capacity on a retry whose first HTTP response was lost.
+      const replayedWork = await replayOutstandingPollWork(
+        workerId,
+        worker.activeSessions
+      )
+      let work: QueuedWork[] = [...replayedWork]
+      const claimedSessionIds: string[] = replayedWork.map((item) => item.sessionId)
 
       // TODO(SUP-1292): When SCHEDULER_MODE=pipeline, use scheduler orchestrator here
       // For now, atomic pop-and-claim eliminates thundering herd races
@@ -69,16 +109,32 @@ export function createWorkerPollHandler() {
         const workerProjects = worker.projects
         const hasProjectFilter = workerProjects && workerProjects.length > 0
 
-        // Atomically pop items from the queue and claim them server-side.
-        // Each popAndClaimWork() call uses ZPOPMIN — no two workers can
-        // receive the same item, eliminating claim races entirely.
+        // The global priority index selects candidates while each work item has
+        // one hash-tagged durable claim authority and replayable receipt.
         const maxAttempts = hasProjectFilter ? desiredCount * 4 : desiredCount
         const popped: QueuedWork[] = []
         const returned: QueuedWork[] = []
 
         for (let i = 0; i < maxAttempts && popped.length < desiredCount; i++) {
-          const item = await popAndClaimWork(workerId)
-          if (!item) break // Queue is empty
+          const claimResult = await popAndClaimWorkWithReceipt(
+            workerId,
+            undefined,
+            [
+              ...worker.activeSessions,
+              ...popped.map((item) => item.sessionId),
+            ]
+          )
+          if (claimResult.status === 'claim_refused_reconciled') {
+            log.warn('Poll skipped work refused by durable reconciliation tombstone', {
+              workerId,
+              sessionId: claimResult.sessionId,
+              reconciliationGeneration: claimResult.reconciliationGeneration,
+            })
+            continue
+          }
+          if (claimResult.status !== 'claimed') break // Queue is empty or unavailable
+
+          const item = claimResult.work
 
           if (hasProjectFilter) {
             if (!item.projectName || !workerProjects!.includes(item.projectName)) {
@@ -131,6 +187,16 @@ export function createWorkerPollHandler() {
             const claimed = await claimSession(item.sessionId, workerId)
             if (!claimed) {
               const session = await getSessionState(item.sessionId)
+              if (
+                session?.status === 'claimed' &&
+                session.workerId === workerId
+              ) {
+                // The first poll response may have been lost after its durable
+                // claim committed. The server-derived token replays the same
+                // payload to this worker; do not release it as unavailable.
+                claimedSessionIds.push(item.sessionId)
+                continue
+              }
               if (!session || session.status !== 'pending') {
                 log.warn('Session not claimable, dropping', {
                   sessionId: item.sessionId,
@@ -163,7 +229,10 @@ export function createWorkerPollHandler() {
         }
 
         // Filter to only items that were fully claimed
-        work = work.filter(w => claimedSessionIds.includes(w.sessionId))
+        work = [
+          ...replayedWork,
+          ...work.filter(w => claimedSessionIds.includes(w.sessionId)),
+        ]
       }
 
       // Read inbox messages for active sessions (urgent-first via streams)

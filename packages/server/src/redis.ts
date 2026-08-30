@@ -199,6 +199,15 @@ export async function redisGet<T>(key: string): Promise<T | null> {
 }
 
 /**
+ * Read an unencoded Redis string. Use only for legacy values that predate the
+ * typed JSON wrapper (for example, worker IDs written by SET NX).
+ */
+export async function redisGetRaw(key: string): Promise<string | null> {
+  const redis = getRedisClient()
+  return redis.get(key)
+}
+
+/**
  * Delete a key
  * @returns number of keys deleted (0 or 1)
  */
@@ -356,6 +365,12 @@ export async function redisExpire(
   const redis = getRedisClient()
   const result = await redis.expire(key, ttlSeconds)
   return result === 1
+}
+
+/** Get a key's remaining TTL in seconds (-2 missing, -1 no expiry). */
+export async function redisTTL(key: string): Promise<number> {
+  const redis = getRedisClient()
+  return redis.ttl(key)
 }
 
 // ============================================

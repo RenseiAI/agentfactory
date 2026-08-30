@@ -5,10 +5,11 @@
  * Uses atomic operations to prevent race conditions.
  */
 
+import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkerAuth } from '../../middleware/worker-auth.js'
 import {
-  claimWork,
+  claimWorkWithReceipt,
   requeueWork,
   releaseClaim,
   claimSession,
@@ -34,7 +35,10 @@ export function createSessionClaimHandler() {
 
     try {
       const body = await request.json()
-      const { workerId } = body as { workerId: string }
+      const { workerId, attemptToken } = body as {
+        workerId: string
+        attemptToken?: string
+      }
 
       if (!workerId || typeof workerId !== 'string') {
         return NextResponse.json(
@@ -43,15 +47,39 @@ export function createSessionClaimHandler() {
         )
       }
 
-      const work = await claimWork(sessionId, workerId)
+      // Callers that retry this endpoint pass a stable token; retain the
+      // legacy request shape by generating one for one-shot callers.
+      const claimAttemptToken =
+        typeof attemptToken === 'string' && attemptToken.trim()
+          ? attemptToken
+          : randomUUID()
+      const claimResult = await claimWorkWithReceipt(sessionId, workerId, claimAttemptToken)
 
-      if (!work) {
+      if (claimResult.status === 'claim_refused_reconciled') {
+        log.warn('Claim refused by durable reconciliation tombstone', {
+          sessionId,
+          workerId,
+          reconciliationGeneration: claimResult.reconciliationGeneration,
+        })
+        return NextResponse.json(
+          {
+            claimed: false,
+            reason: 'claim_refused_reconciled',
+            reconciliationGeneration: claimResult.reconciliationGeneration,
+          },
+          { status: 409 }
+        )
+      }
+
+      if (claimResult.status !== 'claimed') {
         log.debug('Failed to claim work from queue', { sessionId, workerId })
         return NextResponse.json({
           claimed: false,
           reason: 'Work item not available or already claimed',
         })
       }
+
+      const work = claimResult.work
 
       // Validate project routing: reject if the worker's project list
       // doesn't include this work item's project. Prevents cross-repo
@@ -97,6 +125,20 @@ export function createSessionClaimHandler() {
           }
 
           if (sessionState.status !== 'pending') {
+            if (
+              sessionState.status === 'claimed' &&
+              sessionState.workerId === workerId
+            ) {
+              // The first HTTP response may have been lost after the durable
+              // queue receipt and session claim committed. The same attempt
+              // replay returns its retained payload instead of false-negative
+              // failure, and the later `running` status performs cleanup.
+              return NextResponse.json({
+                claimed: true,
+                session: sessionState,
+                work,
+              })
+            }
             log.warn('Session not in pending status, dropping work item', {
               sessionId,
               workerId,
