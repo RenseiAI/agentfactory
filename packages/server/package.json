@@ -45,7 +45,7 @@
   "dependencies": {
     "@donmai/core": "workspace:*",
     "@donmai/plugin-linear": "workspace:*",
-    "ioredis": "^5.11.1"
+    "ioredis": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.5.4",
